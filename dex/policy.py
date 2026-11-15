@@ -13,7 +13,11 @@ policy.json (all keys optional):
                "daily": {"question": 10, "review": 3}, "daily_usd": 2.0},
     "owner":  {"can": ["*"]}
   },
-  "global": {"daily_usd": 15.0, "daily_router_calls": 500}
+  "global": {"daily_usd": 15.0, "daily_router_calls": 500},
+  "paused": false,                         # true = no costly work for anyone (status/stop/usage/help still answer)
+  "disabled": ["review"],                  # capabilities switched off for everyone
+  "max_job_usd": {"review": 4.0, "question": 0.5},   # per-job spending cap (soft: checked between model turns)
+  "max_pr_files": 80                       # reviews refuse PRs with more changed files (the owner can force)
 }
 Capabilities: review, question, investigate, data, status, stop, usage, help.
 """
@@ -70,6 +74,27 @@ class Policy:
             return "owner"
         return self.cfg.get("users", {}).get(user) or self.cfg.get("default_role", "member")
 
+    def paused(self):
+        return bool(self.cfg.get("paused"))
+
+    def disabled(self):
+        return sorted(set(self.cfg.get("disabled") or []))
+
+    def max_job_usd(self, capability):
+        """The per-job spending cap for a capability, or None for no cap."""
+        v = self.cfg.get("max_job_usd")
+        v = v.get(capability) if isinstance(v, dict) else v
+        try:
+            return float(v) if v else None
+        except (TypeError, ValueError):
+            return None
+
+    def max_pr_files(self):
+        try:
+            return int(self.cfg.get("max_pr_files")) or None
+        except (TypeError, ValueError):
+            return None
+
     def role_cfg(self, role):
         return self.cfg.get("roles", {}).get(role, {})
 
@@ -106,7 +131,9 @@ class Policy:
         tmp.replace(self.usage_path)
 
     def _user(self, user):
-        return self.usage["users"].setdefault(user, {"usd": 0.0, "counts": {}})
+        rec = self.usage["users"].setdefault(user, {"usd": 0.0, "counts": {}})
+        rec.setdefault("tokens", {"fresh": 0, "cache_read": 0, "output": 0})
+        return rec
 
     @staticmethod
     def resets_in():
@@ -118,6 +145,11 @@ class Policy:
     # --- decisions ----------------------------------------------------------------------------
     def _check(self, user, capability):
         role = self.role_of(user)
+        if capability in COUNTED:
+            if self.cfg.get("paused"):
+                return False, "Dex is paused by the owner right now, so it isn't taking new work. Status, stop and usage still work."
+            if capability in set(self.cfg.get("disabled") or []):
+                return False, f"`{capability}` is switched off by the owner right now."
         if not self.can(role, capability):
             return False, f"Your role (`{role}`) doesn't include `{capability}`. Ask the owner if you need it."
         if capability in COUNTED:
@@ -150,11 +182,18 @@ class Policy:
                 self._save()
             return ok, why
 
-    def add_cost(self, user, usd):
+    def add_cost(self, user, usd, tokens=None):
+        """Add a finished job's dollars (and, if known, its tokens) to the person's and the global totals."""
         with self.lock:
             self._roll()
-            self._user(user)["usd"] += float(usd or 0)
+            rec = self._user(user)
+            rec["usd"] += float(usd or 0)
             self.usage["global_usd"] += float(usd or 0)
+            for k in ("fresh", "cache_read", "output"):
+                n = int((tokens or {}).get(k) or 0)
+                rec["tokens"][k] += n
+                g = self.usage.setdefault("tokens", {"fresh": 0, "cache_read": 0, "output": 0})
+                g[k] = g.get(k, 0) + n
             self._save()
 
     def router_call_allowed(self):
@@ -173,6 +212,17 @@ class Policy:
             lim = self.limit(self.role_of(user), capability)
             return None if lim is None else max(0, lim - self._user(user)["counts"].get(capability, 0))
 
+    def snapshot(self):
+        """A plain-data copy of today's usage and the switches, for the dashboard."""
+        with self.lock:
+            self._roll()
+            users = {u: {**json.loads(json.dumps(r)), "role": self.role_of(u)} for u, r in self.usage["users"].items()}
+            return {"date": self.usage["date"], "users": users, "global_usd": self.usage["global_usd"],
+                    "tokens": dict(self.usage.get("tokens") or {}), "router_calls": self.usage["router_calls"],
+                    "paused": bool(self.cfg.get("paused")), "disabled": sorted(set(self.cfg.get("disabled") or [])),
+                    "max_job_usd": self.cfg.get("max_job_usd"), "max_pr_files": self.cfg.get("max_pr_files"),
+                    "global": dict(self.cfg.get("global") or {})}
+
     def summary(self, user, everyone=False):
         """A short usage report for one person, or for everyone (owner)."""
         with self.lock:
@@ -186,7 +236,9 @@ class Policy:
                     lim = self.limit(role, cap)
                     if used or lim is not None:
                         parts.append(f"{cap} {used}" + (f"/{lim}" if lim is not None else ""))
-                return f"<@{u}> ({role}): " + (", ".join(parts) or "no requests yet") + f", ${rec['usd']:.2f}"
+                tk = rec.get("tokens") or {}
+                spent = f", {human(sum(tk.values()))} tokens (fresh {human(tk.get('fresh', 0))}, cached {human(tk.get('cache_read', 0))}, out {human(tk.get('output', 0))})" if sum(tk.values()) else ""
+                return f"<@{u}> ({role}): " + (", ".join(parts) or "no requests yet") + f", ${rec['usd']:.2f}" + spent
 
             if everyone:
                 rows = [line(u, r) for u, r in sorted(self.usage["users"].items(), key=lambda kv: -kv[1]["usd"])]
@@ -204,3 +256,28 @@ class Policy:
                 f.write(json.dumps(rec) + "\n")
         except Exception:
             pass
+
+
+def human(n):
+    """1234 -> 1.2K, 1500000 -> 1.5M"""
+    n = float(n)
+    return f"{n / 1e6:.1f}M" if n >= 1e6 else f"{n / 1e3:.1f}K" if n >= 1e3 else f"{n:.0f}"
+
+
+def edit_file(path, mutate):
+    """Change policy.json safely from any process: read it, apply `mutate(dict)`, write it atomically.
+
+    Unknown keys are kept. A missing or unreadable file starts from an empty policy. Dex picks the change up on the
+    next message without a restart. Returns the new content.
+    """
+    path = Path(path)
+    try:
+        cfg = json.loads(path.read_text())
+        cfg = cfg if isinstance(cfg, dict) else {}
+    except (OSError, ValueError):
+        cfg = {}
+    mutate(cfg)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(cfg, indent=2) + "\n")
+    tmp.replace(path)
+    return cfg

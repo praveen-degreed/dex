@@ -9,6 +9,14 @@ class Stopped(Exception):
     """The run was stopped on purpose (the `stop` command)."""
 
 
+class BudgetExceeded(Exception):
+    """The run hit its --max-budget-usd cap (a soft cap: checked between model turns, so it can overshoot by one turn)."""
+
+    def __init__(self, cost):
+        super().__init__(f"job budget exceeded after ${cost:.2f}")
+        self.cost = cost
+
+
 def run_claude(args, cwd, env, raw_path, err_path, key=None, timeout=None, stop_key=None, label="review"):
     """Stream a run. `key` updates a job's live progress; `stop_key` ((channel, thread_ts)) lets `stop` kill it.
 
@@ -45,6 +53,10 @@ def run_claude(args, cwd, env, raw_path, err_path, key=None, timeout=None, stop_
         raise Stopped()
     if timed_out.is_set():
         raise RuntimeError(f"{label} timed out after {timeout // 60} min")
+    if key is not None and result is not None:
+        state.reconcile(key, result.get("usage"))
+    if result is not None and result.get("subtype") == "error_max_budget_usd":
+        raise BudgetExceeded(result.get("total_cost_usd") or 0.0)
     if proc.returncode != 0 or result is None or result.get("is_error"):
         tail = err_path.read_text()[-300:].strip()
         raise RuntimeError(f"claude exited {proc.returncode}" + (f": {tail}" if tail else ""))

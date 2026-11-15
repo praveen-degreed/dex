@@ -157,13 +157,15 @@ def system_prompt():
             .replace("{botq}", BOTQ).replace("{org}", config.GITHUB_ORG).replace("{name}", config.BOT_NAME))
 
 
-def build_command(question, session_id):
-    """The `claude -p` command for one turn. A session id resumes the thread's conversation."""
+def build_command(question, session_id, max_usd=None):
+    """The `claude -p` command for one turn. A session id resumes the thread's conversation; max_usd caps the spend."""
     allowed, denied = qa_tools()
     cmd = ["claude", "-p", question, "--output-format", "stream-json", "--verbose", "--permission-mode", "dontAsk",
            "--allowedTools", allowed, "--disallowedTools", denied, "--append-system-prompt", system_prompt()]
     if BARE:
         cmd += ["--bare", "--tools", "Bash"]
+    if max_usd:
+        cmd += ["--max-budget-usd", f"{max_usd:g}"]
     if session_id:
         cmd += ["--resume", session_id]
     return cmd

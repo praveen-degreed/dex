@@ -3,7 +3,8 @@ import logging
 import re
 import time
 
-from . import config, conversation, progress, reviews, router, services, state
+from . import config, conversation, ctl, progress, reviews, router, services, state
+from .policy import edit_file
 from . import slack_utils as su
 from .github import PR_URL
 
@@ -13,7 +14,7 @@ log = logging.getLogger("dex")
 STATUS_WORDS = re.compile(r"\b(status|progress|updates?|eta|how long|done yet|finished yet|what'?s (happening|going on))\b", re.I)
 FORCE = re.compile(r"\bforce\b", re.I)
 
-CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage"}
+CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage", "control": "usage"}
 LOW_CONFIDENCE = 0.5  # below this the router is guessing: hand the message to the assistant, which can ask
 
 
@@ -63,6 +64,24 @@ def known_jobs(text):
     urls = {m.group(0).lower() for m in PR_URL.finditer(text)}
     with state.lock:
         return [{"url": j["url"], "status": j.get("status")} for j in state.jobs.values() if j.get("url", "").lower() in urls]
+
+
+def switches_text():
+    pol = services.policy.snapshot()
+    return (f"Dex is {'PAUSED (no new costly work)' if pol['paused'] else 'running'}. "
+            f"Switched off: {', '.join(pol['disabled']) or 'nothing'}. Caps: {ctl.caps_line(pol)}.")
+
+
+def do_control(channel, thread_ts, user, action):
+    """Pause, resume or show the switches. Owner only, whatever the router decided."""
+    if user != config.OWNER:
+        services.policy.audit(user=user, capability="control", channel=channel, thread=thread_ts, decision="denied")
+        return su.reply(channel, thread_ts, "Only the owner can pause Dex or change its switches.")
+    if action in ("pause", "resume"):
+        edit_file(services.policy.path, lambda c: c.update(paused=(action == "pause")))
+        services.policy.reload()
+        services.policy.audit(user=user, capability="control", channel=channel, thread=thread_ts, decision=action)
+    return su.reply(channel, thread_ts, switches_text() + (" Use `dexctl` for the other switches." if action != "pause" else " Say `resume` to start again."))
 
 
 def build_context(text, mentions_bot, mentions_owner, review_key, session, info):
@@ -117,11 +136,13 @@ def handle(event):
         services.policy.add_cost(user, verdict.get("cost", 0.0))
     intent = verdict["intent"]
     log.info("route intent=%s conf=%.2f directed=%s via=%s %s", intent, verdict["confidence"], verdict["directed_at_bot"], via, meta)
+    if intent == "ignore" and mentions_bot:  # a direct @-mention is for the bot by definition: never leave it unanswered
+        verdict, intent = {**verdict, "intent": "agent"}, "agent"  # a copy: never change the router's answer in place
     if intent == "ignore" or not (mentions_bot or mentions_owner or verdict["directed_at_bot"]):
         return
     if verdict["confidence"] < LOW_CONFIDENCE and via == "router" and intent != "agent":
         log.info("low confidence (%.2f) on %s: handing to the assistant", verdict["confidence"], intent)
-        intent = verdict["intent"] = "agent"
+        verdict, intent = {**verdict, "intent": "agent"}, "agent"  # a copy: never change the router's answer in place
 
     ok, why = services.policy.check(user, CAPABILITY[intent])
     if not ok:
@@ -139,6 +160,8 @@ def handle(event):
         return do_stop(channel, thread_ts)
     if intent == "usage":
         return su.reply(channel, thread_ts, services.policy.summary(user, everyone=(user == config.OWNER)))
+    if intent == "control":
+        return do_control(channel, thread_ts, user, verdict.get("action", ""))
     if intent == "agent":
         return conversation.start_question(channel, thread_ts, msg_ts, user, text, verdict, review_key, session,
                                            info.get("parent_text", ""))

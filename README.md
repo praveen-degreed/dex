@@ -11,7 +11,8 @@ An LLM router (`dex/router.py`, a small tool-less `claude -p --bare` call) decid
 ## Layout
 ```
 bot.py                 entry point: python -u bot.py
-bin/botq               read-only helper the assistant runs (people's PRs and activity)
+bin/botq               read-only helper the assistant runs (code, history, people's PRs, org-wide search)
+bin/dexctl             see what Dex is doing and change its switches
 people.json            who is who (Slack id -> name, GitHub login): edit freely
 readonly_repos.json    repos the assistant may read and search but never review (e.g. the monolith)
 dex/
@@ -23,7 +24,10 @@ dex/
   progress.py          live-step tracking and status text
   claude_runner.py     streaming `claude -p` runner with timeout and stop
   router.py            LLM intent router
-  policy.py            roles, configurable limits, usage tracking, audit log
+  policy.py            roles, switches (pause/disable), caps, usage and token tracking, audit log
+  runtime.py           live snapshot (runtime.json) for dexctl and the dashboard
+  ctl.py               the dexctl command
+  dashboard.py         the read-only local dashboard
   qa.py                thread-session store, read-only checkouts, the assistant's prompt
   people.py            Slack id -> name + GitHub login (people.json)
   tools_cli.py         the assistant's read-only helper: `bin/botq activity|prs <login>`, `find <keywords>` (org-wide PR search)
@@ -32,7 +36,7 @@ dex/
   handlers.py          Slack event routing
   app.py               startup wiring
   services.py          shared policy and session-store instances
-tests/                 test_policy, test_core, test_flow, test_tools_cli (unit, no network) and eval_router (real model calls)
+tests/                 test_policy, test_core, test_flow, test_tools_cli, test_botq_code, test_ctl (unit, no network) and eval_router (real model calls)
 legacy/                the previous single-file bot, kept for reference
 ```
 
@@ -43,6 +47,28 @@ legacy/                the previous single-file bot, kept for reference
    Optional: `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).
 3. `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`; `gh auth status` and `claude` must work.
 4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Do not restart while a review runs: it kills it.
+
+## Seeing and controlling spend (`dexctl` and the dashboard)
+```
+bin/dexctl status                  what is running now (live steps and tokens), the switches and caps
+bin/dexctl usage [--days N]        spend and tokens: today per person, and the last N days
+bin/dexctl top [--n N]             the most expensive actions
+bin/dexctl pause | resume          stop / allow all costly work (status, stop, usage still answer)
+bin/dexctl disable review          switch a capability off for everyone (enable to undo)
+bin/dexctl cap job-usd review 4    stop any single review that spends more than $4 (soft cap, see below)
+bin/dexctl cap daily-usd 10        the whole bot's spend per day
+bin/dexctl cap pr-files 80         refuse reviews of PRs with more than 80 changed files (the owner can force)
+bin/dexctl serve [--port 8787]     a read-only dashboard at http://127.0.0.1:8787
+```
+Everything is unlimited by default. The commands edit `policy.json` (atomically) and Dex picks the change up on its next
+message, with no restart. In Slack the owner can say `@Dex pause` / `@Dex resume` / `@Dex what is switched off?`; anyone
+else is refused. Live token counts come from Claude's stream (fresh input, cached input, output) and are recorded per
+person and in `audit.jsonl`.
+
+*Per-job caps use the Claude CLI's `--max-budget-usd`, which is checked between model turns: a job can overshoot a cap by
+up to one turn (a large review turn is about $0.05-0.20). A job that hits its cap is stopped, nothing is posted, and the
+asker and the owner are told.* The dashboard runs as its own process, binds to 127.0.0.1 only, answers GET only, rejects
+any other `Host` header (so a web page cannot reach it), and changes nothing.
 
 ## What the assistant can see
 Read-only checkouts of `main` for every repo in `REPOS` (reviewable) and `readonly_repos.json` (read-only), built as `git worktree`s of your clones under `qa/` (they share git history; your working copies, branches and uncommitted work are never read). A background thread creates and refreshes them every 10 minutes, all repos in parallel, so a huge first checkout never blocks an answer; a repo that is not ready yet is listed to the assistant as such. GitHub questions ("is anyone working on X") search the whole `GITHUB_ORG` (default `degreed`) with `bin/botq find`, and every answer states where it looked.
@@ -57,6 +83,6 @@ With no `policy.json`, **everyone may do everything, unlimited**; usage is still
 
 ## Tests
 ```
-.venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py
+.venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py && .venv/bin/python tests/test_botq_code.py && .venv/bin/python tests/test_ctl.py
 .venv/bin/python tests/eval_router.py     # real model calls (~$0.05)
 ```

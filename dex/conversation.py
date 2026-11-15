@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import config, people, qa, services, state
 from . import slack_utils as su
-from .claude_runner import Stopped, run_claude
+from .claude_runner import BudgetExceeded, Stopped, run_claude
 
 log = logging.getLogger("dex")
 qa_pool = ThreadPoolExecutor(max_workers=config.QA_CONCURRENCY)
@@ -27,6 +27,11 @@ def asker_line(user):
     if p and p.get("github"):
         return f"[From: {p.get('name', user)} (GitHub `{p['github']}`)]"
     return f"[From: {(p or {}).get('name') or 'an unknown person'} (Slack <@{user}>; no GitHub login on file)]"
+
+
+def _tokens(key):
+    with state.lock:
+        return dict((state.jobs.get(key) or {}).get("tokens") or {})
 
 
 def start_question(channel, thread_ts, msg_ts, user, text, verdict, review_key, session, parent_text):
@@ -56,15 +61,19 @@ def answer_question(channel, thread_ts, msg_ts, user, text, header):
         raw, err = config.TMPS / f"{name}.jsonl", config.TMPS / f"{name}.err"
         with state.lock:
             state.qa_active[k] = time.time()
-        cost = 0.0
+        qkey = f"q:{channel}:{thread_ts}:{time.time_ns()}"
+        state.new_job(qkey, kind="question", label=f"A question from <@{user}>", url="", sha="", repo="", user=user)
+        state.update_job(qkey, status="running", started_at=time.time(), last_event=time.time(), activity="working on it")
+        max_usd = services.policy.max_job_usd("question")
+        cost, final = 0.0, "failed"
         try:
             sess = services.sessions.get(channel, thread_ts)
             sid = (sess or {}).get("session_id")
             for attempt in (1, 2):
                 prompt = (header + text) if (header and not sid) else text
                 try:
-                    result = run_claude(qa.build_command(prompt, sid), config.QA_DIR, os.environ.copy(), raw, err,
-                                        timeout=config.QA_TIMEOUT_S, stop_key=k, label="answer")
+                    result = run_claude(qa.build_command(prompt, sid, max_usd), config.QA_DIR, os.environ.copy(), raw, err,
+                                        key=qkey, timeout=config.QA_TIMEOUT_S, stop_key=k, label="answer")
                     break
                 except RuntimeError as e:
                     if sid and attempt == 1 and "No conversation found" in str(e):
@@ -77,10 +86,16 @@ def answer_question(channel, thread_ts, msg_ts, user, text, header):
             services.sessions.put(channel, thread_ts, session_id=result.get("session_id") or sid, user=user,
                                   turns=prev["turns"] + 1, cost=prev["cost"] + cost)
             su.reply(channel, thread_ts, answer)
+            final = "done"
             services.policy.audit(user=user, capability="question", channel=channel, thread=thread_ts,
                                   decision="answered", usd=round(cost, 4), turns=prev["turns"] + 1,
-                                  denials=len(result.get("permission_denials") or []))
+                                  denials=len(result.get("permission_denials") or []), tokens=_tokens(qkey))
+        except BudgetExceeded as e:
+            cost, final = e.cost, "stopped"
+            su.reply(channel, thread_ts, f"I stopped that answer at the ${max_usd:g} per-answer limit (about ${e.cost:.2f} spent). Try a narrower question, or ask the owner to raise the limit.")
+            services.policy.audit(user=user, capability="question", channel=channel, thread=thread_ts, decision="budget_stopped", usd=round(cost, 4), tokens=_tokens(qkey))
         except Stopped:
+            final = "stopped"
             su.reply(channel, thread_ts, "Stopped.")
             services.policy.audit(user=user, capability="question", channel=channel, thread=thread_ts, decision="stopped")
         except Exception as e:
@@ -90,7 +105,9 @@ def answer_question(channel, thread_ts, msg_ts, user, text, header):
             services.policy.audit(user=user, capability="question", channel=channel, thread=thread_ts, decision="failed",
                                   error=str(e)[:200])
         finally:
-            services.policy.add_cost(user, cost)
+            services.policy.add_cost(user, cost, _tokens(qkey))
+            state.update_job(qkey, status=final, outcome=final, finished_at=time.time())
+            state.finish_job(qkey)
             with state.lock:
                 state.qa_active.pop(k, None)
             su.react_remove(channel, msg_ts, "eyes")

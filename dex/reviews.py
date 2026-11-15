@@ -13,7 +13,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from . import config, github, progress, services, state
 from . import slack_utils as su
-from .claude_runner import Stopped, run_claude
+from .claude_runner import BudgetExceeded, Stopped, run_claude
 from .tools import review_tools
 
 log = logging.getLogger("dex")
@@ -37,6 +37,11 @@ def prompt(skill, url, sha, post):
     )
 
 
+def job_tokens(key):
+    with state.lock:
+        return dict((state.jobs.get(key) or {}).get("tokens") or {})
+
+
 def start_review(channel, thread_ts, msg_ts, user, match, force):
     """Validate the PR, claim it, count the request against the user's limits, and queue the review."""
     url, repo, number = match.group(0), match.group(1).lower(), match.group(2)
@@ -52,6 +57,11 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
     if info["state"] != "OPEN":
         return su.reply(channel, thread_ts, f"{url} is {info['state'].lower()}; skipping.")
 
+    cap = services.policy.max_pr_files()
+    if cap and info.get("files", 0) > cap and not (force and user == config.OWNER):
+        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_size", files=info.get("files"))
+        return su.reply(channel, thread_ts, f"{url} changes {info['files']} files, and reviews are limited to {cap} files right now because big reviews are expensive. The owner can override this.")
+
     key = f"{repo}#{number}@{sha}"
     with state.lock:
         if key in state.inflight:
@@ -64,7 +74,7 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
     if not ok:
         state.release(key)
         return su.reply(channel, thread_ts, why)
-    state.new_job(key, url=url, sha=sha, repo=repo)
+    state.new_job(key, url=url, sha=sha, repo=repo, user=user)
     with state.lock:
         state.threads[(channel, thread_ts)] = key
     pool.submit(review, url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, info["is_fork"])
@@ -85,6 +95,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
     wt, tmp = config.WORKTREES / name, config.TMPS / name
     tmp.mkdir(exist_ok=True)
     allowed, denied = review_tools(tmp, post)
+    max_usd = services.policy.max_job_usd("review")
     draft = config.DRAFTS / f"{name}.md"
     raw, err = config.DRAFTS / f"{name}.jsonl", config.DRAFTS / f"{name}.err"
     clone = cfg["clone"]
@@ -97,7 +108,8 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         result = run_claude(
             ["claude", "-p", prompt(cfg["skill"], url, sha, post),
              "--output-format", "stream-json", "--verbose",
-             "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied],
+             "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied]
+            + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else []),
             wt, {**os.environ, "TMPDIR": f"{tmp}/"},  # trailing slash: fetch-pr.sh concatenates names onto it
             raw, err, key=key, stop_key=(channel, thread_ts),
         )
@@ -136,7 +148,16 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         if done == "white_check_mark" and not denials:
             raw.unlink(missing_ok=True)  # keep the raw event log when the run failed, was denied something, or posted nothing
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, sha=sha[:7],
-                              decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials))
+                              decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials), tokens=job_tokens(key))
+    except BudgetExceeded as e:
+        cost = e.cost
+        state.release(key)
+        state.update_job(key, status="stopped", outcome="stopped at the budget", finished_at=time.time())
+        su.react_remove(channel, msg_ts, "eyes")
+        su.react(channel, msg_ts, "octagonal_sign")
+        su.reply(channel, thread_ts, f"Stopped the review of {url}: it reached the ${max_usd:g} per-review limit (about ${cost:.2f} spent) before finishing, so nothing was posted. Ask the owner to raise the limit, or review a smaller PR.")
+        su.dm(config.OWNER, f"The review of {url} was stopped at the ${max_usd:g} per-review limit (spent about ${cost:.2f}).")
+        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="budget_stopped", usd=round(cost, 4), tokens=job_tokens(key))
     except Stopped:
         state.release(key)
         state.update_job(key, status="stopped", finished_at=time.time())
@@ -154,7 +175,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="failed",
                               error=str(err_)[:200])
     finally:
-        services.policy.add_cost(user, cost)
+        services.policy.add_cost(user, cost, job_tokens(key))
         state.finish_job(key)
         r = subprocess.run(["git", "-C", clone, "worktree", "remove", "--force", str(wt)], capture_output=True)
         if r.returncode:

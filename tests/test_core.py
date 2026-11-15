@@ -32,7 +32,23 @@ class Progress(unittest.TestCase):
         self.assertIn("approved", progress.status_text("k"))
         state.update_job("k", status="stopped"); self.assertIn("stopped", progress.status_text("k"))
         state.jobs.clear(); self.assertEqual(progress.overview_text(), "Nothing is running or queued.")
-        state.qa_active[("C", "1")] = time.time(); self.assertIn("1 question(s)", progress.overview_text()); state.qa_active.clear()
+        state.new_job("q1", kind="question", label="A question from <@U1>", url="", sha="", repo=""); state.update_job("q1", status="running", started_at=time.time())
+        self.assertIn("A question from <@U1> has been running", progress.overview_text(), "questions show up like reviews"); state.jobs.clear()
+    def test_tokens_are_counted_once_per_model_call(self):
+        state.jobs.clear(); state.msg_usage.clear(); state.new_job("t", url="u", sha="abcdef1234", repo="r")
+        ev = lambda mid, i, c, o, cr: json.dumps({"type": "assistant", "message": {"id": mid, "content": [{"type": "text", "text": "x"}], "usage": {"input_tokens": i, "cache_creation_input_tokens": c, "output_tokens": o, "cache_read_input_tokens": cr}}})
+        progress.track("t", ev("m1", 10, 100, 5, 1000)); progress.track("t", ev("m1", 10, 100, 50, 1000)); progress.track("t", ev("m2", 2, 0, 7, 3000))
+        self.assertEqual(state.jobs["t"]["tokens"], {"fresh": 112, "cache_read": 4000, "output": 57}, "m1 counted once with its largest output")
+        progress.track(None, ev("m3", 9, 9, 9, 9)); self.assertEqual(state.jobs["t"]["tokens"]["fresh"], 112, "no job key, nothing counted")
+        state.finish_job("t"); self.assertNotIn("t", state.msg_usage); state.jobs.clear()
+    def test_reconcile_adds_what_the_stream_under_reported_for_the_main_session_only(self):
+        state.jobs.clear(); state.msg_usage.clear(); state.usage_adjust.clear(); state.new_job("t", url="u", sha="abcdef1234", repo="r")
+        ev = lambda mid, o, parent=None, c=0, fr=100: json.dumps({"type": "assistant", "parent_tool_use_id": parent, "message": {"id": mid, "content": [{"type": "text", "text": "x"}], "usage": {"input_tokens": fr, "cache_creation_input_tokens": 0, "output_tokens": o, "cache_read_input_tokens": c}}})
+        progress.track("t", ev("main1", 10, None, 1000)); progress.track("t", ev("sub1", 3, "toolu_1", 500)); self.assertEqual(state.jobs["t"]["tokens"], {"fresh": 200, "cache_read": 1500, "output": 13})
+        state.reconcile("t", {"input_tokens": 100, "cache_creation_input_tokens": 0, "cache_read_input_tokens": 1000, "output_tokens": 50})
+        self.assertEqual(state.jobs["t"]["tokens"], {"fresh": 200, "cache_read": 1500, "output": 53}, "main output 10 -> 50 (+40); the sub-agent's 3 stays as streamed; matching fields are untouched")
+        state.reconcile("t", {"input_tokens": 1, "output_tokens": 1}); self.assertEqual(state.jobs["t"]["tokens"], {"fresh": 200, "cache_read": 1500, "output": 3 + 10}, "a smaller final figure never subtracts")
+        state.reconcile("t", None); state.reconcile("nope", {"output_tokens": 9}); state.finish_job("t"); self.assertNotIn("t", state.usage_adjust); state.jobs.clear()
 
 class State(unittest.TestCase):
     def test_claim_release_dedupe_and_stop(self):
@@ -51,6 +67,7 @@ class Runner(unittest.TestCase):
             "import sys, json, time\nm = sys.argv[1]\n"
             "print(json.dumps({'type':'assistant','message':{'content':[{'type':'tool_use','name':'Bash','input':{'command':'triage.sh'}}]}}), flush=True)\n"
             "if m == 'slow': time.sleep(30)\nif m == 'fail': sys.exit(3)\n"
+            "if m == 'budget': print(json.dumps({'type':'result','subtype':'error_max_budget_usd','is_error':True,'total_cost_usd':5.25}), flush=True); sys.exit(1)\n"
             "print(json.dumps({'type':'result','is_error': m == 'err','result':'OK','session_id':'sid1'}), flush=True)\n")
     def run_(self, mode, **kw):
         return run_claude([sys.executable, str(self.d / "fake.py"), mode], self.d, None, self.d / "raw", self.d / "err", **kw)
@@ -60,6 +77,10 @@ class Runner(unittest.TestCase):
     def test_failures(self):
         for mode in ("fail", "err"):
             with self.assertRaises(RuntimeError): self.run_(mode)
+    def test_budget_exceeded_is_its_own_error_with_the_cost(self):
+        from dex.claude_runner import BudgetExceeded
+        with self.assertRaises(BudgetExceeded) as cm: self.run_("budget")
+        self.assertAlmostEqual(cm.exception.cost, 5.25); self.assertIn("5.25", str(cm.exception))
     def test_timeout(self):
         t = time.time()
         with self.assertRaises(RuntimeError) as cm: self.run_("slow", timeout=1)
@@ -90,7 +111,8 @@ class QA(unittest.TestCase):
         allowed = c[c.index("--allowedTools") + 1]; self.assertTrue(allowed.startswith(f"Bash({tools.BOTQ}:*)")); self.assertNotIn("Read", allowed); self.assertNotIn("git -C", allowed)
         flat = " ".join(c[c.index("--append-system-prompt") + 1].split())
         for needle in ("Ada Lovelace", "ada-l", tools.BOTQ, "[From:", "ONE simple command per call", "origin/main", "Ask questions when they help", "fe-workspace (degreed/fe-workspace", "degreed-api-version-2"): self.assertIn(needle, flat)
-        self.assertNotIn(str(config.QA_DIR), flat, "no checkout paths exist any more"); self.assertEqual(qa.build_command("q", "sid9")[-2:], ["--resume", "sid9"])
+        self.assertNotIn(str(config.QA_DIR), flat, "no checkout paths exist any more"); self.assertEqual(qa.build_command("q", "sid9")[-2:], ["--resume", "sid9"]); self.assertNotIn("--max-budget-usd", qa.build_command("q", None))
+        c = qa.build_command("q", "s", 0.5); self.assertEqual(c[c.index("--max-budget-usd") + 1], "0.5"); self.assertEqual(c[-2:], ["--resume", "s"])
 
 
 class Fetch(unittest.TestCase):

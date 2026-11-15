@@ -57,6 +57,11 @@ def track(key, line):
                 if what:
                     job["activity"] = what
                     job["steps"] += 1
+        msg = ev.get("message") if ev.get("type") == "assistant" else None
+        u = msg.get("usage") if isinstance(msg, dict) else None
+        if u and msg.get("id"):  # outside the lock: add_usage takes it
+            state.add_usage(key, msg["id"], (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0),
+                            u.get("cache_read_input_tokens") or 0, u.get("output_tokens") or 0, main=ev.get("parent_tool_use_id") is None)
     return ev
 
 
@@ -70,7 +75,7 @@ def status_text(key):
         job = dict(state.jobs[key])
         ahead = [j for j in state.jobs.values() if j["status"] in ("queued", "running") and j["queued_at"] < job["queued_at"]]
     now = time.time()
-    head = f"{job['url']} @ `{job['sha'][:7]}`"
+    head = job.get("label") or f"{job['url']} @ `{job['sha'][:7]}`"
     if job["status"] == "queued":
         return f"{head} is queued ({len(ahead)} ahead of it); it has not started yet."
     if job["status"] == "running":
@@ -88,8 +93,4 @@ def overview_text():
     with state.lock:
         live = sorted((k for k, j in state.jobs.items() if j["status"] in ("queued", "running")),
                       key=lambda k: state.jobs[k]["queued_at"])
-        answering = len(state.qa_active)
-    lines = [status_text(k) for k in live]
-    if answering:
-        lines.append(f"{answering} question(s) being answered.")
-    return "\n".join(lines) or "Nothing is running or queued."
+    return "\n".join(status_text(k) for k in live) or "Nothing is running or queued."

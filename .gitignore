@@ -8,6 +8,7 @@ commands.json
 
 # Runtime data, logs and per-person usage
 state.json
+runtime.json
 usage.json
 qa_sessions.json
 audit.jsonl

@@ -5,7 +5,7 @@ from types import SimpleNamespace
 from unittest import mock
 from dex import config, conversation, handlers, qa, reviews, router, services, state
 from dex import slack_utils as su
-from dex.claude_runner import Stopped
+from dex.claude_runner import BudgetExceeded, Stopped
 from dex.policy import Policy
 
 OWNER = "UOWNER"; U4626 = "https://github.com/degreed/fe-workspace/pull/4626"; FE = "degreed/fe-workspace"; CB = "degreed/degreed-coach-builder"
@@ -65,7 +65,8 @@ class Routing(Base):
         state.threads[("C1", "T")] = "k"; state.new_job("k", url=U4626, sha="abcdef1234", repo=FE); state.update_job("k", status="running", started_at=time.time())
         self.verdict = V("status"); handlers.handle(ev(type_="message", text="any update?", thread_ts="T")); self.assertIn("running for", self.slack.texts()[0])
     def test_ignore_and_not_directed(self):
-        self.verdict = V("ignore"); handlers.handle(ev(text="<@BOT> thanks")); self.assertEqual(self.slack.posts, [])
+        self.verdict = V("ignore"); handlers.handle(ev(text="<@BOT> thanks")); self.start_question.assert_called_once(); self.assertEqual(self.slack.posts, [])
+        self.start_question.reset_mock(); handlers.handle(ev(type_="message", text=f"<@{OWNER}> thanks again", ts="1.9")); self.start_question.assert_not_called()  # tagging the owner is not a request to the bot
         state.threads[("C1", "T")] = "k"; self.verdict = V("agent", directed=False); handlers.handle(ev(type_="message", text="lgtm", thread_ts="T", ts="9.9"))
         self.start_question.assert_not_called()
     def test_low_confidence_goes_to_the_assistant_not_a_guess(self):
@@ -95,6 +96,20 @@ class Routing(Base):
         self.verdict = V("stop"); handlers.handle(ev(text="<@BOT> stop", ts="5.5")); self.assertIn("Nothing is running", self.slack.texts()[-1])
         proc = mock.Mock(); proc.poll.return_value = None; state.procs[("C1", "T")] = proc
         handlers.handle(ev(text="<@BOT> stop", ts="6.6", thread_ts="T")); proc.kill.assert_called_once(); self.assertIn("Stopping", self.slack.texts()[-1])
+    def test_control_pause_is_owner_only_and_really_stops_costly_work(self):
+        pol = lambda: json.loads((self.tmp / "policy.json").read_text()) if (self.tmp / "policy.json").exists() else {}
+        self.verdict = {**V("control"), "action": "pause"}; handlers.handle(ev(user="U1", text="<@BOT> pause everything"))
+        self.assertIn("Only the owner", self.slack.texts()[-1]); self.assertEqual(pol(), {}, "a teammate changed nothing"); self.assertFalse(services.policy.paused())
+        self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "denied")
+        handlers.handle(ev(user=OWNER, text="<@BOT> pause everything", ts="2.2")); self.assertIn("PAUSED", self.slack.texts()[-1]); self.assertIn("resume", self.slack.texts()[-1]); self.assertTrue(pol()["paused"]); self.assertTrue(services.policy.paused())
+        self.verdict = V("agent"); handlers.handle(ev(text="<@BOT> who wrote this?", ts="3.3")); self.assertIn("paused by the owner", self.slack.texts()[-1]); self.start_question.assert_not_called()
+        self.verdict = V("usage"); handlers.handle(ev(text="<@BOT> usage", ts="4.4")); self.assertIn("(member)", self.slack.texts()[-1], "usage still answers while paused")
+        self.verdict = {**V("control"), "action": "resume"}; handlers.handle(ev(user=OWNER, text="<@BOT> resume", ts="5.5")); self.assertIn("Dex is running", self.slack.texts()[-1]); self.assertFalse(pol()["paused"])
+        self.verdict = V("agent"); handlers.handle(ev(text="<@BOT> who wrote this?", ts="6.6")); self.start_question.assert_called_once()
+    def test_control_show_reports_the_switches_without_changing_anything(self):
+        self.set_policy({"disabled": ["review"], "max_job_usd": {"review": 4}, "max_pr_files": 80}); self.verdict = {**V("control"), "action": "show"}; handlers.handle(ev(user=OWNER, text="<@BOT> what is switched off?"))
+        t = self.slack.texts()[-1]; self.assertIn("Dex is running", t); self.assertIn("Switched off: review", t); self.assertIn("review $4", t); self.assertIn("PR files <= 80", t)
+        self.verdict = {**V("control"), "action": ""}; handlers.handle(ev(user=OWNER, text="<@BOT> hm", ts="2.2")); self.assertIn("Switched off: review", self.slack.texts()[-1]); self.assertFalse(services.policy.paused())
     def test_role_denied_is_replied_and_audited(self):
         self.set_policy({"users": {"U1": "viewer"}, "roles": {"viewer": {"can": ["question", "status"]}}}); self.verdict = V("review")
         handlers.handle(ev(text=f"<@BOT> review {U4626}")); self.assertIn("viewer", self.slack.texts()[0]); self.start_review.assert_not_called()
@@ -129,6 +144,17 @@ class StartReview(Base):
         self.assertEqual(state.jobs[f"{FE}#4626@{'a' * 40}"]["status"], "queued"); self.assertEqual(state.threads[("C1", "T")], f"{FE}#4626@{'a' * 40}")
         self.assertIn("Review started", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[0]["name"], "eyes"); self.assertIn("review 1", services.policy.summary("U1"))
 
+class SizeGuard(StartReview):
+    def test_big_prs_are_refused_unless_the_owner_forces(self):
+        key = f"{FE}#4626@{'a' * 40}"; self.set_policy({"max_pr_files": 50}); self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "files": 83}
+        self.go(); self.assertIn("83 files", self.slack.texts()[0]); self.assertIn("limited to 50", self.slack.texts()[0]); self.pool.submit.assert_not_called(); self.assertNotIn(key, state.seen)
+        self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "refused_size")
+        self.go(force=True); self.pool.submit.assert_not_called()  # a teammate cannot force past the cap
+        self.go(user=OWNER, force=True); self.pool.submit.assert_called_once()
+    def test_the_limit_is_inclusive_and_no_limit_means_none(self):
+        self.set_policy({"max_pr_files": 50}); self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "files": 50}; self.go(); self.pool.submit.assert_called_once()
+        self.pool.reset_mock(); state.seen.clear(); state.inflight.clear(); self.set_policy({}); self.info.return_value["files"] = 5000; self.go(); self.pool.submit.assert_called_once()
+
 class Question(Base):
     def setUp(self):
         super().setUp(); mock.patch.stopall(); self.addCleanup(mock.patch.stopall); su.client = self.slack; services.policy = Policy(self.tmp, OWNER)
@@ -159,7 +185,7 @@ class Answer(Base):
         self.calls = []
         self.result = {"result": "**Answer** here", "session_id": "sid1", "total_cost_usd": 0.05, "permission_denials": []}
         self.runner = mock.patch.object(conversation, "run_claude", side_effect=self.fake_run).start()
-    def fake_run(self, args, *a, **k): self.calls.append((args, a)); r = self.result; (_ for _ in ()).throw(r) if isinstance(r, Exception) else None; return r
+    def fake_run(self, args, *a, **k): self.calls.append((args, a)); self.kw = getattr(self, 'kw', []) + [k]; r = self.result; (_ for _ in ()).throw(r) if isinstance(r, Exception) else None; return r
     def go(self, text="q?", header=""): conversation.answer_question("C1", "T", "M", "U1", text, header)
     def test_success_session_cost_audit(self):
         self.go(header="[ctx]\n"); self.assertEqual(self.slack.texts(), ["*Answer* here"]); args, rest = self.calls[0]; self.assertIn("[ctx]\nq?", args[2]); self.assertNotIn("--resume", args); self.assertEqual(rest[0], config.QA_DIR, "runs from an empty folder: no repo is copied anywhere")
@@ -167,6 +193,13 @@ class Answer(Base):
         s = services.sessions.get("C1", "T"); self.assertEqual((s["session_id"], s["turns"]), ("sid1", 1)); self.assertAlmostEqual(s["cost"], 0.05)
         self.assertIn("$0.05", services.policy.summary("U1")); self.assertNotIn(("C1", "T"), state.qa_active); self.assertEqual(self.slack.unreacts[-1]["name"], "eyes")
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "answered")
+    def test_a_question_is_a_tracked_job_with_the_cap(self):
+        self.set_policy({"max_job_usd": {"question": 0.5}}); self.go(); a = self.calls[0][0]; self.assertEqual(a[a.index("--max-budget-usd") + 1], "0.5")
+        qs = [j for j in state.jobs.values() if j.get("kind") == "question"]; self.assertEqual(len(qs), 1); self.assertEqual((qs[0]["status"], qs[0]["label"]), ("done", "A question from <@U1>")); self.assertTrue(self.kw[0]["key"].startswith("q:C1:T:"))
+    def test_a_question_over_budget_says_so_and_saves_no_session(self):
+        self.set_policy({"max_job_usd": {"question": 0.5}}); self.result = BudgetExceeded(0.9); self.go()
+        t = self.slack.texts()[0]; self.assertIn("$0.5 per-answer limit", t); self.assertIn("$0.90", t); self.assertIsNone(services.sessions.get("C1", "T")); self.assertIn("$0.90", services.policy.summary("U1"))
+        self.assertEqual([j["status"] for j in state.jobs.values() if j.get("kind") == "question"], ["stopped"]); self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "budget_stopped")
     def test_follow_up_resumes_and_skips_header(self):
         self.go(); self.go(text="and before that?", header="[ctx]\n"); c = self.calls[1][0]; self.assertEqual(c[c.index("--resume") + 1], "sid1"); self.assertEqual(c[2], "and before that?"); self.assertEqual(services.sessions.get("C1", "T")["turns"], 2)
     def test_lost_session_restarts_once(self):
@@ -196,6 +229,17 @@ class RunReview(Base):
         a = self.captured["args"]; allowed = a[a.index("--allowedTools") + 1]; self.assertIn("gh pr review", allowed); self.assertIn("Edit(//", allowed); self.assertTrue(self.captured["env"]["TMPDIR"].endswith("/"))
         self.assertNotIn(self.key, state.inflight); self.assertFalse((config.TMPS / f"degreed_fe-workspace-4626-{'a' * 7}").exists(), "private temp dir removed")
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "done")
+    def test_the_job_cap_is_passed_and_exceeding_it_stops_cleanly(self):
+        self.set_policy({"max_job_usd": {"review": 4}}); state.jobs[self.key]["tokens"] = {"fresh": 100, "cache_read": 2000, "output": 30}; self.result = BudgetExceeded(5.1); self.go()
+        a = self.captured["args"]; self.assertEqual(a[a.index("--max-budget-usd") + 1], "4")
+        t = self.slack.texts()[0]; self.assertIn("Stopped the review", t); self.assertIn("$4 per-review limit", t); self.assertIn("$5.10", t); self.assertIn("nothing was posted", t)
+        self.assertEqual(self.slack.reacts[-1]["name"], "octagonal_sign"); self.assertEqual(state.jobs[self.key]["status"], "stopped"); self.assertNotIn(self.key, state.seen)
+        dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("$4 per-review limit", dm[0]["text"])
+        s = services.policy.summary("U1"); self.assertIn("$5.10", s, "the overshoot is still counted"); self.assertIn("tokens", s)
+        last = json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1]); self.assertEqual((last["decision"], last["usd"], last["tokens"]["fresh"]), ("budget_stopped", 5.1, 100))
+    def test_without_a_cap_there_is_no_flag_and_tokens_reach_the_audit_log(self):
+        self.posted.return_value = ("COMMENTED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 7, "cache_read": 8, "output": 9}; self.go()
+        self.assertNotIn("--max-budget-usd", self.captured["args"]); last = json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1]); self.assertEqual(last["tokens"], {"fresh": 7, "cache_read": 8, "output": 9})
     def test_no_posted_review_warns(self):
         self.posted.return_value = None; self.go(); self.assertIn("could not find a posted review", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[-1]["name"], "warning")
     def test_fork_is_draft_only(self):

@@ -14,7 +14,8 @@ from pathlib import Path
 
 log = logging.getLogger("dex.router")
 
-INTENTS = ["review", "status", "stop", "usage", "agent", "ignore"]
+INTENTS = ["review", "status", "stop", "usage", "control", "agent", "ignore"]
+ACTIONS = ["", "pause", "resume", "show"]
 
 SYSTEM = """You are the first-stage router for {name}, a Slack bot that has an AI assistant (code, git history and GitHub
 questions, people's work) plus four fixed actions. Classify ONE Slack message.
@@ -30,10 +31,14 @@ Pick a fixed action ONLY when the message clearly asks for exactly that. Anythin
   one of those is going is status; asking about a PR link the bot has no review for is agent.
 - stop: the user asks to stop, cancel or abort what the bot is doing in this thread.
 - usage: the user asks about their own usage, quota or cost.
+- control: someone asks to pause or resume the whole bot ("pause everything", "we're burning tokens, stop taking new work",
+  "resume") or to see what is switched off. Set action to pause, resume or show. This is different from `stop`, which
+  stops one running job in this thread.
 - agent: EVERYTHING ELSE meant for the bot. Questions about code, history, reasoning, PRs, CI, people's work
   ("what is Shubham doing?"), estimates of what a fix would take, requests the bot cannot do (it will explain),
   what the bot can do, answers to a question the assistant just asked, small talk with the bot.
-- ignore: not meant for the bot (people talking to each other, thanks, chatter), or empty of any request.
+- ignore: not meant for the bot (people talking to each other, thanks, chatter), or empty of any request. A message
+  that directly mentions the bot (context.mentions_bot) is never ignore: it is agent unless it is one of the actions above.
 
 When unsure between a fixed action and agent, choose agent: the assistant can ask a clarifying question.
 directed_at_bot: true if the message is addressed to the bot (it mentions the bot or the owner, or in a thread the
@@ -50,6 +55,7 @@ SCHEMA = {
         "intent": {"type": "string", "enum": INTENTS},
         "directed_at_bot": {"type": "boolean"},
         "force": {"type": "boolean"},
+        "action": {"type": "string", "enum": ACTIONS},
         "confidence": {"type": "number"},
     },
     "required": ["intent", "directed_at_bot", "force", "confidence"],
@@ -94,6 +100,7 @@ def validate(raw):
             "intent": raw["intent"],
             "directed_at_bot": bool(raw.get("directed_at_bot")),
             "force": bool(raw.get("force")),
+            "action": raw.get("action") if raw.get("action") in ACTIONS else "",
             "confidence": max(0.0, min(1.0, float(raw.get("confidence", 0)))),
         }
     except (TypeError, ValueError):
