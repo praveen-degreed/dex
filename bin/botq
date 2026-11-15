@@ -1,0 +1,4 @@
+#!/bin/sh
+# Read-only helper commands for the assistant (one simple command per call). See dex/tools_cli.py.
+here="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$here" && exec "$here/.venv/bin/python" -m dex.tools_cli "$@"

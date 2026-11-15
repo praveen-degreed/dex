@@ -1,0 +1,95 @@
+"""What a running review is doing, read from Claude's stream events, and the text of a status reply."""
+import json
+import time
+
+from . import state
+
+# What a Bash command in the stream means, first match wins (checked against the command text).
+ACTIVITY = [
+    ("pr-worktree.sh create", "creating a worktree at the PR head"),
+    ("fetch-pr.sh", "fetching the PR"),
+    ("triage.sh", "planning the review"),
+    ("split-pr.sh", "splitting a large PR into units"),
+    ("gh pr review", "posting the review"),
+    ("pr-worktree.sh cleanup", "cleaning up"),
+    ("cleanup-pr.sh", "cleaning up"),
+    ("gh pr checks", "reading CI status"),
+    ("gh pr diff", "reading the diff"),
+    ("gh pr view", "reading the PR"),
+    ("gh api", "reading earlier reviews"),
+]
+
+
+def describe(ev):
+    """Short description of what a stream event shows Claude doing, or None if it shows nothing new."""
+    if ev.get("type") != "assistant":
+        return None
+    msg = ev.get("message")
+    for b in (msg.get("content") if isinstance(msg, dict) else None) or []:
+        if not isinstance(b, dict) or b.get("type") != "tool_use":
+            continue
+        name, inp = b.get("name"), b.get("input") or {}
+        if name == "Bash":
+            cmd = inp.get("command", "")
+            return next((text for needle, text in ACTIVITY if needle in cmd), "running a command")
+        if name in ("Agent", "Task"):
+            return f"running reviewer {inp.get('subagent_type') or inp.get('description') or 'agent'}"
+        if name == "Skill":
+            return "loading the review skill"
+        if name in ("Edit", "Write"):
+            return "writing the review"
+        return "reading the code"  # Read, Grep, Glob, ...
+    return None
+
+
+def track(key, line):
+    """Parse one stream line; if `key` names a job, update its progress. Returns the event, or None if not JSON."""
+    try:
+        ev = json.loads(line)
+    except ValueError:
+        return None
+    if key is not None:
+        what = describe(ev)
+        with state.lock:
+            job = state.jobs.get(key)
+            if job:
+                job["last_event"] = time.time()
+                if what:
+                    job["activity"] = what
+                    job["steps"] += 1
+    return ev
+
+
+def ago(secs):
+    m, s = divmod(max(int(secs), 0), 60)
+    return f"{m}m {s:02d}s" if m else f"{s}s"
+
+
+def status_text(key):
+    with state.lock:
+        job = dict(state.jobs[key])
+        ahead = [j for j in state.jobs.values() if j["status"] in ("queued", "running") and j["queued_at"] < job["queued_at"]]
+    now = time.time()
+    head = f"{job['url']} @ `{job['sha'][:7]}`"
+    if job["status"] == "queued":
+        return f"{head} is queued ({len(ahead)} ahead of it); it has not started yet."
+    if job["status"] == "running":
+        return (f"{head} has been running for {ago(now - job['started_at'])}. Now: {job['activity']}. "
+                f"{job['steps']} steps so far, the last one {ago(now - job['last_event'])} ago.")
+    took = f" in {ago(job['finished_at'] - job['started_at'])}" if job.get("started_at") else ""
+    if job["status"] == "done":
+        return f"{head} finished {ago(now - job['finished_at'])} ago{took}: {job['outcome']}. {job.get('link', '')}".strip()
+    if job["status"] == "stopped":
+        return f"{head} was stopped {ago(now - job['finished_at'])} ago."
+    return f"{head} failed {ago(now - job['finished_at'])} ago."
+
+
+def overview_text():
+    with state.lock:
+        live = sorted((k for k, j in state.jobs.items() if j["status"] in ("queued", "running")),
+                      key=lambda k: state.jobs[k]["queued_at"])
+        answering = len(state.qa_active)
+    lines = [status_text(k) for k in live]
+    if answering:
+        lines.append(f"{answering} question(s) being answered.")
+    return "\n".join(lines) or "Nothing is running or queued."

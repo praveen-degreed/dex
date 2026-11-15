@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy to policy.json to change anything. Missing file = everyone may do everything, unlimited. null/absent limit = unlimited. Edits are picked up without a restart.",
+  "default_role": "member",
+  "users": {
+    "U0EXAMPLE1": "investigator"
+  },
+  "roles": {
+    "member": {
+      "can": ["review", "question", "status", "stop", "usage", "help"],
+      "daily": {"question": null, "review": null},
+      "daily_usd": null
+    },
+    "investigator": {
+      "can": ["review", "question", "investigate", "status", "stop", "usage", "help"],
+      "daily": {"question": null, "review": null, "investigate": null}
+    },
+    "owner": {"can": ["*"]}
+  },
+  "global": {"daily_usd": null, "daily_router_calls": null}
+}

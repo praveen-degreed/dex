@@ -1,0 +1,30 @@
+# Secrets and local configuration: never commit
+.env
+.env.*
+people.json
+policy.json
+readonly_repos.json
+commands.json
+
+# Runtime data, logs and per-person usage
+state.json
+usage.json
+qa_sessions.json
+audit.jsonl
+bot.log
+*.log
+drafts/
+worktrees/
+tmp/
+qa/
+router_cwd/
+memory/
+
+# Environment and build output
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# The previous single-file bot, kept locally for reference only
+legacy/
