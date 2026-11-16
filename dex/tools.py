@@ -14,11 +14,12 @@ REVIEW_READ = [
     "Bash(gh api repos/*/pulls/*/reviews)",  # exact form only, so `-X POST` cannot be appended
     "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)",
     "Bash(git grep:*)", "Bash(git ls-files:*)", "Bash(git status:*)",
-    f"Bash({_SKILLS}/review-prs/scripts/:*)", f"Bash({_SKILLS}/review-prs-be/scripts/:*)",
+    # `/*`, not `/:*`: the `:*` form needs a space after the prefix, so it never matched `.../scripts/name.sh` (verified).
+    f"Bash({_SKILLS}/review-prs/scripts/*)", f"Bash({_SKILLS}/review-prs-be/scripts/*)",
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
 ]
 REVIEW_POST = ["Bash(gh pr review:*)", "Bash(gh pr comment:*)"]  # added only when the skill may post
-REVIEW_DENIED = ["Bash(gh pr merge:*)", "Bash(git push:*)", "Bash(git commit:*)"]
+REVIEW_DENIED = ["Bash(gh pr merge:*)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(*/../*)"]  # last: no path climbing out of the scripts dirs
 
 
 def review_tools(tmp, post):
