@@ -148,8 +148,9 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         state.update_job(key, status="done", outcome=outcome, link=link, finished_at=time.time())
         su.react_remove(channel, msg_ts, "eyes")
         su.react(channel, msg_ts, done)
-        if done == "white_check_mark" and not denials:
-            raw.unlink(missing_ok=True)  # keep the raw event log when the run failed, was denied something, or posted nothing
+        if done == "white_check_mark" and not denials and outcome != github.REVIEW_LABEL.get("COMMENTED", "comments posted"):
+            raw.unlink(missing_ok=True)  # keep the raw event log when the run failed, was denied something, posted nothing or
+            # was comment-only (the skill downgrades when a reviewer did not finish: the log shows why)
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, sha=sha[:7],
                               decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials), tokens=job_tokens(key))
     except BudgetExceeded as e:
