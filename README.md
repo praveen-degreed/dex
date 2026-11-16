@@ -85,4 +85,6 @@ With no `policy.json`, **everyone may do everything, unlimited**; usage is still
 ```
 .venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py && .venv/bin/python tests/test_botq_code.py && .venv/bin/python tests/test_ctl.py
 .venv/bin/python tests/eval_router.py     # real model calls (~$0.05)
+tests/check_permissions.py # real model calls (~$0.9): every skill script and read command is allowed, merge/push/rm are not.
+                          # Run it after editing dex/tools.py or updating a review skill.
 ```

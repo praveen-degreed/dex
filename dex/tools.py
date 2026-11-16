@@ -17,6 +17,9 @@ REVIEW_READ = [
     # `/*`, not `/:*`: the `:*` form needs a space after the prefix, so it never matched `.../scripts/name.sh` (verified).
     f"Bash({_SKILLS}/review-prs/scripts/*)", f"Bash({_SKILLS}/review-prs-be/scripts/*)",
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
+    # Read-only helpers the skills chain with the commands above (`cd x && script`, `ls | head`). A chained call is allowed
+    # only when every part matches a rule, and paths must stay inside the run's directory (verified: tests/check_permissions.py).
+    "Bash(cd:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)", "Bash(pwd)",
 ]
 REVIEW_POST = ["Bash(gh pr review:*)", "Bash(gh pr comment:*)"]  # added only when the skill may post
 REVIEW_DENIED = ["Bash(gh pr merge:*)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(*/../*)"]  # last: no path climbing out of the scripts dirs
