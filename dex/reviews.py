@@ -33,8 +33,9 @@ def prompt(skill, url, sha, post):
         f"The PR head is pinned at {sha}; review exactly that commit. {mode} "
         "Note: checks.txt from fetch-pr.sh lists only FAILING checks; an empty file means no check is failing, "
         "it does not mean CI could not be read. This run only allows single, simple commands: issue one command per Bash "
-        "call, never chain with ; && || or pipes, and do not use ls or other commands outside the skill's own scripts "
-        "and read-only gh/git; a chained call is denied as a whole.\n\n"
+        "call, never chain with ; && || or pipes, and never use cd, shell variables, ~ or ls. Call the skill's scripts by "
+        "their full absolute path (not ~/...); they find the repos themselves. A chained or non-matching call is denied "
+        "as a whole.\n\n"
         f"Reviewer's standing lessons:\n{lessons}"
     )
 
