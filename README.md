@@ -91,7 +91,7 @@ company policy: check before you switch.**
 The thread reply ends with a usage line: total tokens (new, cached, output), cost, number of agents, time and the account it ran on, for example
 `_Usage: 2.54M tokens (340K new, 2.20M cached, 3K output) · $2.44 · 5 agents · 7m 36s · account: Azure Foundry_`. On the personal plan the cost is
 labelled an API-equivalent estimate (you are not billed per token). The account is read when the review starts, so a switch during a run does not
-change what is reported; the audit log records the same `profile`, `agents` and `tokens`.
+change what is reported; the audit log records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
 
 ## Seeing and controlling spend (`dexctl` and the dashboard)
 ```

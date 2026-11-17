@@ -283,6 +283,11 @@ class RunReview(Base):
         reviews.run_claude.side_effect = switch_back_midway; self.go()
         self.assertIn("API-equivalent estimate", self.slack.texts()[-1]); self.assertIn("account: subscription", self.slack.texts()[-1])
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["profile"], "subscription")
+    def test_the_requester_is_tagged_when_the_review_ends(self):
+        self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review done"), self.slack.texts()[-1])
+        self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = None; self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review finished but"))
+        self.slack.posts.clear(); state.seen.add(self.key); self.result = RuntimeError("boom"); self.go(); self.assertIn("<@U1> Review of", self.slack.texts()[0])
+        self.slack.posts.clear(); state.seen.add(self.key); self.result = BudgetExceeded(5.1); self.set_policy({"max_job_usd": {"review": 4}}); self.go(); self.assertIn("<@U1> Stopped the review", self.slack.texts()[0])
     def test_a_review_that_ran_no_agents_is_flagged_and_its_log_kept(self):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Bash"), self.event("Read"), json.dumps({"type": "result"})]); self.go()
         self.assertTrue(any("The skill ran no review agents" in t for t in self.slack.texts()), "the thread reply warns"); dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("NO review agents", dm[0]["text"])

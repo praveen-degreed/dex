@@ -256,19 +256,19 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             if found:
                 gh_state, link = found
                 outcome = github.REVIEW_LABEL.get(gh_state, gh_state.lower())
-                su.reply(channel, thread_ts, f"Review done on {url}: {outcome}. {link}"
+                su.reply(channel, thread_ts, f"<@{user}> Review done on {url}: {outcome}. {link}"
                          + ("\n:warning: The skill ran no review agents (it reviewed alone), so treat this as a quick read, not a full review." if no_agents else "") + usage)
                 done = "white_check_mark"
             else:
                 outcome = "finished, but no posted review was found"
-                su.reply(channel, thread_ts, f"Review finished but I could not find a posted review on {url}; check the PR." + usage)
+                su.reply(channel, thread_ts, f"<@{user}> Review finished but I could not find a posted review on {url}; check the PR." + usage)
                 done = "warning"
         else:
             body = draft.read_text().strip()
             if not body:
                 raise RuntimeError("review produced no output")
             outcome = "not posted (PR is from a fork)"
-            su.reply(channel, thread_ts, f"Review done on {url}, not posted (PR is from a fork).\n\n{body[:2800]}" + usage)
+            su.reply(channel, thread_ts, f"<@{user}> Review done on {url}, not posted (PR is from a fork).\n\n{body[:2800]}" + usage)
             done = "white_check_mark"
         state.update_job(key, status="done", outcome=outcome, link=link, finished_at=time.time())
         su.react_remove(channel, msg_ts, "eyes")
@@ -284,7 +284,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         state.update_job(key, status="stopped", outcome="stopped at the budget", finished_at=time.time())
         su.react_remove(channel, msg_ts, "eyes")
         su.react(channel, msg_ts, "octagonal_sign")
-        su.reply(channel, thread_ts, f"Stopped the review of {url}: it reached the ${max_usd:g} per-review limit (about ${cost:.2f} spent) before finishing, so nothing was posted. Ask the owner to raise the limit, or review a smaller PR." + usage_line(key, cost, agents, started, profile))
+        su.reply(channel, thread_ts, f"<@{user}> Stopped the review of {url}: it reached the ${max_usd:g} per-review limit (about ${cost:.2f} spent) before finishing, so nothing was posted. Ask the owner to raise the limit, or review a smaller PR." + usage_line(key, cost, agents, started, profile))
         su.dm(config.OWNER, f"The review of {url} was stopped at the ${max_usd:g} per-review limit (spent about ${cost:.2f}).")
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="budget_stopped", usd=round(cost, 4), tokens=job_tokens(key))
     except Stopped:
@@ -297,7 +297,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
     except Exception as err_:
         state.release(key)  # allow a retry on this SHA
         state.update_job(key, status="failed", finished_at=time.time())
-        su.reply(channel, thread_ts, f"Review of {url} failed." + usage_line(key, cost, agents, started, profile))
+        su.reply(channel, thread_ts, f"<@{user}> Review of {url} failed." + usage_line(key, cost, agents, started, profile))
         su.react_remove(channel, msg_ts, "eyes")
         su.react(channel, msg_ts, "x")
         su.dm(config.OWNER, f"Review of {url} failed: {str(getattr(err_, 'stderr', None) or err_)[:500]}")
