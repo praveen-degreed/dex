@@ -1,30 +1,31 @@
 # TODO and requests log
 
-The running list of what is open for Dex and the review skills. Newest first. Status: open, decision, in progress, done.
+The running list of what is open for Dex and the review skills. Cleaned up 2026-11-17 (everything below "Done" is live: Dex restarted 21:21, pushed at `b3ac260`).
 
-## Requested 2026-11-17
-- **done (needs restart + push)** Stop the recurring harmless denials at the root (40 denied calls in 22 reviews, 9 reviews affected): the run's own temp dir is readable (`--add-dir`), read-only `grep`/`rg`/`jira issue view` allowed, all denials logged to `denials.jsonl`, and only risky ones DM the owner. Left blocked on purpose: `..`, sibling repos, `pytest`, web fetch/search, inline-body `gh pr review`.
-- **done (needs restart)** The Dex page (`bin/dexctl serve`): overview, jobs and settings, with stop / cancel / run / restart from the page (dex/control.py inbox) and settings through dexctl's code. Guarded by Host + Origin + a per-process token. Later: live findings per agent (parse them from the stream), a live cost estimate, and reordering the queue.
-- **done (needs restart + push)** Allow the read-only `git -C <dir> grep|log|show|diff|blame|ls-files|rev-parse|status` a review run uses on its worktree (it was denied: only plain `git grep` was allowed); `git -C <dir> push|commit|checkout|reset` stay blocked. Found in the #1818 review.
-- **done (needs restart + push)** A review no agent worked on, or a `DEX_VERDICT: skip`, posts nothing to GitHub (only a Slack reply to the requester); draft PRs ARE reviewed (decided 2026-11-17). Caused by the first .NET run on a draft PR (#58217): the skill stopped at preflight and Dex still posted its 'review not run' text as a comment on that PR. That comment is still on the PR and needs to be hidden or deleted by hand; #58217 needs a rerun.
-- **done (needs restart + push)** Tag the person who requested a review, in the thread reply, when it finishes, fails or stops at the cost limit.
-- **in progress** Post a real decision for every review: the .NET flow was comment-only; now the skill ends with `DEX_VERDICT: approve|request_changes|comment` and Dex posts `--approve` / `--request-changes` / `--comment` (approve downgraded when no agent ran; own PR falls back to a comment). Dex side done; the skill side is `review-skills` PR #5, waiting for merge. Note: an approval posted under the owner's login counts like a human approval for checks such as bot-approval-guard.
-- **done (needs restart + push)** Post tokens and cost at the end of every review. A line in the Slack thread reply: total tokens (fresh, cached, output), cost, number of agents, duration and the account used. On the personal subscription the cost is an API-equivalent estimate. Needs the account recorded at the start of the review (see the audit bug below). Also decide whether to add it to the GitHub comment (default: Slack only).
-- **open (later)** Run reviews in parallel. Today `CONCURRENCY=1`, so a second review waits. Needs `CONCURRENCY` raised and a Dex restart; test two small reviews first (same-clone worktrees, memory, rate limits on a subscription).
-- **decision** The `review` account switch applies to everyone's reviews, so teammates' reviews also run on the personal account. Decide: keep, or personal only for reviews the owner requests.
-- **done** The audit records the Claude profile read at the start of the review (it was read at the end).
-- **in progress** First real run of `review-prs-net` (the .NET monolith skill) on the personal account. Check: route, team skill followed, agents launched, citation check, tokens and cost, what was posted.
-- **decision** Personal and company account design. Scope for now: Dex reviews only. Keep two folders (current) or one shared folder (see `docs/claude-two-accounts.md`). The terminal switch `USE_PERSONAL_CLAUDE=0|1` exists and works with two folders.
-- **open** Enterprise startup tokens are higher (about 35K vs 25K per session) because the normal folder loads 12 skills and 9 plugins. Trim the ones rarely used.
+## Needs you
+- **decision** Teammates' reviews also run on the personal account (the `review` switch is global). Keep, or personal only for reviews the owner requests?
+- **decision** Personal vs company account design. Scope for now: Dex reviews only; two folders (current) work. One shared folder is the alternative (see `docs/claude-two-accounts.md`).
+- **decision** Old repos `fe-claude-skills` and `be-claude-skills` are archived but still public: make private or delete. `dev-guard` lives in the frozen `fe-claude-skills` and needs a new home.
+- **action** `degreed/Degreed` #58217: rerun the review (drafts are reviewed now). Its earlier junk comment ("Review not run ... I posted nothing to GitHub") is still on the PR and has to be hidden by hand (or ask me to try minimizing it).
 
-## Open from earlier
-- **decision** Old repos `fe-claude-skills` and `be-claude-skills` are archived but still public; decide private or delete. `dev-guard` lives in the frozen `fe-claude-skills` and needs a new home.
+## Open work
+- **open** Test the Dex page controls (stop, run, restart, pause, switches, caps, Claude accounts) on a throwaway state; only the page and the read-only API were checked.
+- **open** Run the full live permission check once, `tests/check_permissions.py` (~$0.95), after today's allowlist changes.
+- **open (later)** Reviews in parallel. `CONCURRENCY=1` today; needs a raise in `.env` plus a restart; test two small reviews first.
+- **open** Trim the enterprise startup load (about 35K vs 25K tokens per session): 12 skills and 9 plugins in the normal folder.
 - **open** Measure the `py-docs-conformance` cap (60 to 40 turns) on the next large BE review; check it did not cut depth.
-- **open** A fair baseline comparison against the built-in `/code-review` (it reviewed the wrong diff in three runs because of the clone's stale local `main`).
+- **open (optional)** Fair baseline vs the built-in `/code-review` (it reviewed the wrong diff in three runs: the clone's local `main` is stale).
 - **open** Slack token refresh support (needed before any reinstall of the Slack app) and rotate the tokens that were pasted in chat.
 - **open** A GitHub token that cannot merge to `main`, so "no merge" is enforced server-side.
 
+## To confirm on a real run
+- `review-prs-net` posting a real decision (`DEX_VERDICT: approve|request_changes|comment`). It has run twice so far: #58450 (comments, 6 agents, 8.4M tokens) and #58217 (stopped at the draft check, before the fix). The approve / request-changes path has not been seen yet.
+- The usage line, requester tag and "N tool calls blocked" count in a real thread reply (shipped after the last review finished).
+
 ## Done 2026-11-17
-- One repo for both review skills (`review-skills`), plus `review-prs-net` for the .NET monolith.
-- Account switch for Dex runs (`dexctl foundry|subscription`, `dexctl claude show|check|use`), terminal switch `USE_PERSONAL_CLAUDE`.
-- Dex warns when a review ran no agents; reviews post with `--body-file`; stale worktrees are cleared.
+- One repo for the review skills (`review-skills`: FE, BE, and `review-prs-net` for the .NET monolith, which routes to `dg-pr-review` / `dg-maestro-review`); installer copies the shared scripts; both Claude folders kept in step.
+- Skill rules: mandatory agents gate, size/risk selection, shared digest, free scripts, verify-citations, always-run mapped reviewers, no ping agents; `.NET` skill decides approve / request changes / comment and ends with a `DEX_VERDICT` line.
+- Dex: account switch per kind of run (`dexctl foundry|subscription`, `dexctl claude show|check|use`; the account is read at the start of a review); terminal switch `USE_PERSONAL_CLAUDE=0|1`; monolith and degreed-assistant reviewable (`repos_extra.json`); several PR links in one message; reviews post with `--body-file`; stale worktrees cleared.
+- Every finished review: usage line (tokens, cost, agents, time, account), tags the requester, warns when no agent ran; a review no agent worked on (or `skip`) posts nothing to GitHub; drafts are reviewed.
+- Recurring denials fixed at the root: the run's own temp dir is readable, read-only `grep` / `rg` / `jira issue view` / `git -C <dir> <read-only>` allowed, all denials logged to `denials.jsonl`, only risky ones DM the owner. Blocked on purpose: `..`, sibling repos, `pytest`, web fetch/search, inline-body `gh pr review`, `git -C <dir> push|commit|checkout|reset`.
+- The Dex page (`bin/dexctl serve`): overview, jobs, settings and controls, guarded by Host + Origin + a per-process token. Later: live findings per agent, a live cost estimate, queue reordering.
