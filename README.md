@@ -2,11 +2,11 @@
 
 A Slack agent (Socket Mode, runs locally). People mention the bot, or tag the owner, and it:
 
-- **reviews a PR** (`fe-workspace` via `/review-prs`, `degreed-coach-builder` via `/review-prs-be`); the skill posts its own decision to GitHub;
+- **reviews a PR** (`fe-workspace` via `/review-prs`; `degreed-coach-builder` and `degreed-assistant` via `/review-prs-be`); the skill posts its own decision to GitHub. A message with several PR links reviews each distinct one, one at a time (up to `MAX_LINKS_PER_MESSAGE`, default 5); a bare link, or "review" in a thread whose parent is a PR link, is enough;
 - **answers anything else it can find out** ("who changed this and why?", "what is Shubham working on?", "my open PRs") as an assistant with read-only access to both repos' `main`, git history and GitHub. A Slack thread is one Claude session, so follow-ups keep their context, and the assistant **asks a clarifying question** when it needs one;
 - reports **status**, **stops** a running job, and shows **usage**.
 
-An LLM router (`dex/router.py`, a small tool-less `claude -p --bare` call) decides whether a message is one of four fixed actions (review, status, stop, usage) or goes to the assistant. It picks a fixed action only when the message clearly asks for it; everything else, and anything it is unsure about, goes to the assistant. If the router fails, simple rules keep reviews and status working. Nothing acts on a label alone: PR links are extracted by regex and checked against the configured repos.
+No command format is needed: an LLM router (`dex/router.py`, a small tool-less `claude -p --bare` call) decides whether a message is one of four fixed actions (review, status, stop, usage) or goes to the assistant. It picks a fixed action only when the message clearly asks for it; everything else, and anything it is unsure about, goes to the assistant. If the router fails, simple rules keep reviews and status working. Nothing acts on a label alone: PR links are extracted by regex and checked against the configured repos.
 
 ## Layout
 ```
@@ -45,9 +45,11 @@ legacy/                the previous single-file bot, kept for reference
 1. Slack app: Socket Mode on. Bot scopes `app_mentions:read`, `chat:write`, `channels:history`, `groups:history`, `reactions:write`; events `message.channels`, `message.groups`, `app_mention`. Invite the bot to the channels.
 2. `cp env.example .env` and fill in `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `OWNER_USER_ID`, `REPOS`; copy `people.example.json` to `people.json` and `readonly_repos.example.json` to `readonly_repos.json` (both optional)
    (`{"degreed/fe-workspace":{"clone":"/path","skill":"/review-prs"},"degreed/degreed-coach-builder":{"clone":"/path","skill":"/review-prs-be"}}`).
-   Optional: `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).
+   More reviewable repos (for example `degreed/degreed-assistant` with `/review-prs-be`) can go in `repos_extra.json` instead of `.env` (see `repos_extra.example.json`).
+   Optional: `MAX_LINKS_PER_MESSAGE` (5), `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).
 3. `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`; `gh auth status` and `claude` must work.
-4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Do not restart while a review runs: it kills it.
+4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Code changes load only on a restart (tmux does not reload code or restart a crashed bot). **Do not restart while a review runs: it kills it** (check `pgrep -fl 'claude.* -p'` first). A killed review leaves nothing posted; send the link again with `force`.
+5. The review skills are installed from GitHub `main` (`install.sh --global` in `fe-claude-skills` and `be-claude-skills`), not from local files: a skill change takes effect only after it is merged and reinstalled. Each review reads the installed skill fresh, so no Dex restart is needed for that.
 
 ## Seeing and controlling spend (`dexctl` and the dashboard)
 ```
@@ -74,11 +76,16 @@ any other `Host` header (so a web page cannot reach it), and changes nothing.
 ## What the assistant can see
 Read-only checkouts of `main` for every repo in `REPOS` (reviewable) and `readonly_repos.json` (read-only), built as `git worktree`s of your clones under `qa/` (they share git history; your working copies, branches and uncommitted work are never read). A background thread creates and refreshes them every 10 minutes, all repos in parallel, so a huge first checkout never blocks an answer; a repo that is not ready yet is listed to the assistant as such. GitHub questions ("is anyone working on X") search the whole `GITHUB_ORG` (default `degreed`) with `bin/botq find`, and every answer states where it looked.
 
+## When a review is not approved
+The skill approves only a complete review. Common reasons for a comment-only review: a reviewer ran out of turns, a step was denied, the PR is your own (GitHub does not allow approving it), or the review ran without its agents. Look at the posted `Not verified` section, then at the kept log in `drafts/<repo>-<pr>-<sha>.jsonl` (`dexctl` and the DM list denials). Cost scales with the PR: a small PR should be well under $2, a huge one can reach $8; cap a single review with `bin/dexctl cap job-usd review N`.
+
 ## Policy: who may do what, and limits
 With no `policy.json`, **everyone may do everything, unlimited**; usage is still recorded. Copy `policy.example.json` to `policy.json` to add roles and limits (per person, per capability, per day, optional dollar budgets); edits apply without a restart. `@bot usage` shows your usage; the owner sees everyone's. Every decision and action is appended to `audit.jsonl`.
 
 ## Safety
-- Reviews run in a throwaway worktree with a private temp dir; the only write access is that temp dir. `gh pr merge`, `git push`, `git commit` are denied.
+- Reviews run in a throwaway worktree with a private temp dir; the only write access is that temp dir. `gh pr merge`, `git push`, `git commit` and any `../` path are denied. A review never runs the PR's own code (no `pytest`, `ruff`): test results come from CI.
+- The review allowlist (`dex/tools.py`) is strict on purpose: the skills' scripts are allowed as `.../scripts/*` (the `:*` form never matched), a chained command is allowed only if every part is allowed, shell variables are denied, and the review is posted with `--body-file` (an inline multi-line body with a `#` line is denied). Denied calls are counted per review and DM'd to the owner. Raw event logs of reviews that were denied something, failed, or were comment-only are kept in `drafts/` to see why.
+- Review prompts and skills are untrusted-input aware: PR text is data, never instructions. Full permission bypass is not used.
 - The assistant is read-only: it reads only the repo checkouts (not the bot's `.env`), runs git only as `git -C <checkout> <read-only subcommand>`, and uses GitHub only for PR and search lookups. Edit, push, commit and merge are denied.
 - Slack messages, PR text, logs and code are treated as untrusted data by every prompt.
 
@@ -86,6 +93,6 @@ With no `policy.json`, **everyone may do everything, unlimited**; usage is still
 ```
 .venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py && .venv/bin/python tests/test_botq_code.py && .venv/bin/python tests/test_ctl.py
 .venv/bin/python tests/eval_router.py     # real model calls (~$0.05)
-tests/check_permissions.py # real model calls (~$0.9): every skill script and read command is allowed, merge/push/rm are not.
-                          # Run it after editing dex/tools.py or updating a review skill.
+tests/check_permissions.py   # real model calls (~$0.9): every skill script and read command is allowed, merge/push/rm/inline-body are not.
+                             # Run it after editing dex/tools.py or updating a review skill.
 ```
