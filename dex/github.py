@@ -18,14 +18,14 @@ def gh_json(args):
 def pr_info(url):
     """{'sha','state','is_fork'} for a PR URL. Raises RuntimeError if gh cannot read it."""
     r = subprocess.run(
-        ["gh", "pr", "view", url, "--json", "headRefOid,state,isCrossRepository,changedFiles",
-         "-q", '.headRefOid+" "+.state+" "+(.isCrossRepository|tostring)+" "+(.changedFiles|tostring)'],
+        ["gh", "pr", "view", url, "--json", "headRefOid,state,isCrossRepository,changedFiles,isDraft",
+         "-q", '.headRefOid+" "+.state+" "+(.isCrossRepository|tostring)+" "+(.changedFiles|tostring)+" "+(.isDraft|tostring)'],
         capture_output=True, text=True,
     )
     if r.returncode:
         raise RuntimeError(r.stderr.strip()[:300] or "gh pr view failed")
-    sha, state, fork, files = r.stdout.split()
-    return {"sha": sha, "state": state, "is_fork": fork == "true", "files": int(files)}
+    sha, state, fork, files, draft = r.stdout.split()
+    return {"sha": sha, "state": state, "is_fork": fork == "true", "files": int(files), "is_draft": draft == "true"}
 
 
 def pr_paths(url):

@@ -170,6 +170,14 @@ class DotNetRepo(StartReview):
     def test_repos_without_those_settings_are_untouched(self):
         self.go(U4626); self.paths.assert_not_called(); self.assertEqual(self.pool.submit.call_args[0][6], config.REPOS[FE])
 
+class DraftPr(DotNetRepo):
+    def test_a_draft_is_refused_for_repos_where_dex_posts_unless_the_owner_forces_it(self):
+        self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "is_draft": True}; self.paths.return_value = ["trunk/a.cs"]; self.go(UNET)
+        self.assertIn("is a draft", self.slack.texts()[0]); self.pool.submit.assert_not_called(); self.assertNotIn(f"{NET}#57415@{'a' * 40}", state.seen)
+        self.go(UNET, user=OWNER, force=True); self.pool.submit.assert_called_once()
+    def test_other_repos_are_not_affected_by_the_draft_rule(self):
+        self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "is_draft": True}; self.go(U4626); self.pool.submit.assert_called_once()
+
 class SizeGuard(StartReview):
     def test_big_prs_are_refused_unless_the_owner_forces(self):
         key = f"{FE}#4626@{'a' * 40}"; self.set_policy({"max_pr_files": 50}); self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "files": 83}
@@ -331,8 +339,13 @@ class RunReview(Base):
         gh, _ = self.dotnet("## Review\nbad\nDEX_VERDICT: request_changes", raw=agents); self.assertIn("--request-changes", gh[0])
         reviews.subprocess.run.reset_mock(); reviews.subprocess.run.side_effect = None
         gh, _ = self.dotnet("## Review\nno decision line", raw=agents); self.assertIn("--comment", gh[0])
-    def test_an_approve_with_no_agents_is_downgraded_to_a_comment(self):
-        gh, _ = self.dotnet("## Review\nDEX_VERDICT: approve", raw="\n".join([self.event("Bash")])); self.assertIn("--comment", gh[0]); self.assertNotIn("--approve", gh[0])
+    def test_a_review_no_agent_worked_on_posts_nothing_to_github_and_tells_the_requester(self):
+        gh, key = self.dotnet("Review not run: the PR is a draft.\nDEX_VERDICT: approve", raw="\n".join([self.event("Bash")]))
+        self.assertEqual(gh, [], "nothing goes to GitHub"); t = self.slack.texts()[-1]; self.assertIn("<@U1> No review was posted", t); self.assertIn("the PR is a draft", t); self.assertEqual(state.jobs[key]["outcome"], "not reviewed (nothing posted)")
+        self.assertEqual(self.slack.reacts[-1]["name"], "warning")
+    def test_a_skip_verdict_posts_nothing_even_when_agents_ran_and_raises_no_shortcut_warning(self):
+        gh, _ = self.dotnet("PR closed.\nDEX_VERDICT: skip", raw=self.event("Agent")); self.assertEqual(gh, []); self.assertIn("No review was posted", self.slack.texts()[-1])
+        gh, _ = self.dotnet("Draft.\nDEX_VERDICT: skip", raw=self.event("Bash")); self.assertFalse([p for p in self.slack.posts if p["channel"] == OWNER and "NO review agents" in p["text"]], "a deliberate skip is not a shortcut")
     def test_an_own_pull_request_falls_back_to_a_comment(self):
         calls = []
         def run(cmd, **kw):

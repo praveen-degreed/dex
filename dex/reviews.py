@@ -57,12 +57,12 @@ def prompt(skill, url, sha, post, tmp=None):
     )
 
 
-VERDICT_LINE = re.compile(r"^[ \t]*DEX_VERDICT:[ \t]*(approve|request_changes|comment)[ \t]*$", re.M | re.I)
+VERDICT_LINE = re.compile(r"^[ \t]*DEX_VERDICT:[ \t]*(approve|request_changes|comment|skip)[ \t]*$", re.M | re.I)
 
 
 def split_verdict(text):
-    """(verdict, text without the verdict line). The review skills end a drafted review with `DEX_VERDICT: approve|request_changes|comment`;
-    no line (or an unknown word) means comment."""
+    """(verdict, text without the verdict line). The review skills end a drafted review with `DEX_VERDICT: approve|request_changes|comment|skip`
+    (skip = nothing was reviewed, post nothing); no line (or an unknown word) means comment."""
     found = VERDICT_LINE.findall(text)
     verdict = found[-1].lower() if found else "comment"
     return verdict, VERDICT_LINE.sub("", text).rstrip()
@@ -146,6 +146,10 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_size", files=info.get("files"))
         return su.reply(channel, thread_ts, f"{url} changes {info['files']} files, and reviews are limited to {cap} files right now because big reviews are expensive. The owner can override this.")
 
+    if cfg.get("dex_posts") and info.get("is_draft") and not (force and user == config.OWNER):  # a draft is not ready for review, and Dex would post on it
+        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_draft")
+        return su.reply(channel, thread_ts, f"{url} is a draft, so I don't review it (a review would land on a PR its author has not asked anyone to look at). "
+                                            "Mark it ready for review and ask again. The owner can force it.")
     if cfg.get("maestro_skill") or cfg.get("dex_posts"):  # repos whose skills live in the repo itself
         try:
             paths = github.pr_paths(url)
@@ -196,7 +200,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
     clone = cfg["clone"]
     started = datetime.datetime.now(datetime.timezone.utc)
     profile = claude_env.profile_name(services.policy, "review")  # the account this review runs on, read once at the start
-    agents = None
+    agents, skipped, skill_verdict = None, None, None
     state.update_job(key, status="running", started_at=time.time(), last_event=time.time(), activity="getting the PR ready")
     cost = 0.0
     try:
@@ -219,9 +223,10 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             if not body:
                 raise RuntimeError("the review skill produced no text to post")
             verdict, body = split_verdict(body)
+            skill_verdict = verdict
+            if count_agent_calls(raw) == 0:  # nothing was reviewed by an agent: post nothing to GitHub, only tell the requester here
+                verdict = "skip"
             note = ""
-            if verdict == "approve" and count_agent_calls(raw) == 0:  # never approve a review that no agent worked on
-                verdict, note = "comment", " Downgraded from approve: no review agents ran."
             flags = {"approve": "--approve", "request_changes": "--request-changes", "comment": "--comment"}
             body_file = tmp / "review-body.md"
             body_file.write_text(body[:60000] + f"\n\n---\n:robot: AI-assisted review (`{cfg['skill'].split()[0].lstrip('/')}`), posted by Dex with the skill's decision: "
@@ -229,12 +234,15 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
 
             def gh_review(flag):
                 return subprocess.run(["gh", "pr", "review", number, "--repo", repo, flag, "--body-file", str(body_file)], capture_output=True, text=True)
-            posted = gh_review(flags[verdict])
-            if posted.returncode and verdict != "comment" and "own pull request" in (posted.stderr or "").lower():
-                posted = gh_review("--comment")  # GitHub does not let the author approve or request changes on their own PR
-            if posted.returncode:
-                raise RuntimeError(f"gh pr review failed: {(posted.stderr or '')[:200]}")
-            post = True  # from here on it is looked up like a review the skill posted itself
+            if verdict == "skip":
+                skipped = body
+            else:
+                posted = gh_review(flags[verdict])
+                if posted.returncode and verdict != "comment" and "own pull request" in (posted.stderr or "").lower():
+                    posted = gh_review("--comment")  # GitHub does not let the author approve or request changes on their own PR
+                if posted.returncode:
+                    raise RuntimeError(f"gh pr review failed: {(posted.stderr or '')[:200]}")
+                post = True  # from here on it is looked up like a review the skill posted itself
         denials = result.get("permission_denials") or []
         if denials:
             def shown(d):
@@ -244,14 +252,18 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             su.dm(config.OWNER, f"Review of {url}: {len(denials)} tool call(s) were denied by the bot's permission rules:\n"
                   + "\n".join(shown(d) for d in denials[:8]))
         agents = count_agent_calls(raw)
-        no_agents = agents == 0
+        no_agents = agents == 0 and skill_verdict != "skip"  # a deliberate skip (draft, closed, ...) is not a shortcut
         usage = usage_line(key, cost, agents, started, profile)
         if no_agents:
             log.warning("review of %s ran no review agents", key)
             su.dm(config.OWNER, f"Review of {url} ran NO review agents: the skill reviewed alone. Treat it as a quick read. "
                   f"The raw log is kept in {raw.name}.")
         link = ""
-        if post:
+        if skipped is not None:
+            outcome = "not reviewed (nothing posted)"
+            su.reply(channel, thread_ts, f"<@{user}> No review was posted for {url}; nothing went to GitHub. Why:\n>{skipped[:1500].replace(chr(10), chr(10) + '>')}" + usage)
+            done = "warning"
+        elif post:
             found = github.posted_review(repo, number, started)
             if found:
                 gh_state, link = found
