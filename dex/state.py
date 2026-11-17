@@ -18,6 +18,7 @@ handled = set()       # (channel, ts) of events already acted on, so message + a
 procs = {}            # (channel, thread_ts) -> running claude subprocess, so `stop` can kill it
 stopped = set()       # (channel, thread_ts) whose process was killed on purpose
 cancelled = set()     # review keys cancelled while still queued
+limit_hits = {}       # Claude profile -> (when it was hit (time.time()), when it resets (datetime or None), raw text)
 qa_active = {}        # (channel, thread_ts) -> start time of a running answer
 msg_usage = {}        # job key -> {message id: (fresh input, cache read, output, from the main session)}, counted once per model call
 usage_adjust = {}     # job key -> tokens the stream under-reported, added once the final usage is known

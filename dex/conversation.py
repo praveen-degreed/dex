@@ -8,8 +8,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import claude_env, config, people, qa, services, state
+from .limits import limit_text, note_limit
 from . import slack_utils as su
-from .claude_runner import BudgetExceeded, Stopped, run_claude
+from .claude_runner import BudgetExceeded, Stopped, UsageLimit, run_claude
 
 log = logging.getLogger("dex")
 qa_pool = ThreadPoolExecutor(max_workers=config.QA_CONCURRENCY)
@@ -95,6 +96,11 @@ def answer_question(channel, thread_ts, msg_ts, user, text, header):
             cost, final = e.cost, "stopped"
             su.reply(channel, thread_ts, f"I stopped that answer at the ${max_usd:g} per-answer limit (about ${e.cost:.2f} spent). Try a narrower question, or ask the owner to raise the limit.")
             services.policy.audit(user=user, capability="question", channel=channel, thread=thread_ts, decision="budget_stopped", usd=round(cost, 4), tokens=_tokens(qkey))
+        except UsageLimit as e:
+            profile = claude_env.profile_name(services.policy, "question"); note_limit(profile, e); final = "failed"
+            su.reply(channel, thread_ts, f"<@{user}> I can't answer that right now. " + limit_text(profile, e.reset, owner_hint=False) + " Try again after the reset.")
+            su.dm(config.OWNER, f"{limit_text(profile, e.reset)} A question in a thread could not be answered. What Claude said: {e.text[:300]}")
+            services.policy.audit(user=user, capability="question", channel=channel, thread=thread_ts, decision="usage_limit", profile=profile, error=e.text[:200])
         except Stopped:
             final = "stopped"
             su.reply(channel, thread_ts, "Stopped.")

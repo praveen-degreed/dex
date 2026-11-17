@@ -14,8 +14,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import claude_env, config, github, progress, services, state
+from .limits import limit_active, limit_text, note_limit
 from . import slack_utils as su
-from .claude_runner import BudgetExceeded, Stopped, run_claude
+from .claude_runner import BudgetExceeded, Stopped, UsageLimit, run_claude
 from .tools import review_tools
 
 log = logging.getLogger("dex")
@@ -173,6 +174,12 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
             return su.reply(channel, thread_ts, f"{url} changes files under `.claude/` (skills, agents or hooks). This repo's review skills come from the PR "
                                                 "itself, so a PR could rewrite its own reviewer; I won't run them. The owner can force it, or review it by hand.")
         cfg = {**cfg, "skill": choose_skill(cfg, paths)}
+    profile = claude_env.profile_name(services.policy, "review")
+    hit = limit_active(profile)
+    if hit and not (force and user == config.OWNER):
+        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_limit", profile=profile)
+        return su.reply(channel, thread_ts, f"<@{user}> I did not start the review of {url}. " + limit_text(profile, hit[1]).replace(" The owner can switch", " The owner can force it or switch")
+                        + " Send it again after the reset.")
     key = f"{repo}#{number}@{sha}"
     with state.lock:
         if key in state.inflight:
@@ -319,6 +326,15 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         su.reply(channel, thread_ts, f"<@{user}> Stopped the review of {url}: it reached the ${max_usd:g} per-review limit (about ${cost:.2f} spent) before finishing, so nothing was posted. Ask the owner to raise the limit, or review a smaller PR." + usage_line(key, cost, agents, started, profile))
         su.dm(config.OWNER, f"The review of {url} was stopped at the ${max_usd:g} per-review limit (spent about ${cost:.2f}).")
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="budget_stopped", usd=round(cost, 4), tokens=job_tokens(key))
+    except UsageLimit as e:
+        note_limit(profile, e)
+        state.release(key)  # allow a retry on this SHA once the limit resets
+        state.update_job(key, status="failed", outcome="usage limit reached", finished_at=time.time())
+        su.react_remove(channel, msg_ts, "eyes")
+        su.react(channel, msg_ts, "hourglass_flowing_sand")
+        su.reply(channel, thread_ts, f"<@{user}> The review of {url} did not finish. " + limit_text(profile, e.reset, owner_hint=False) + " Send it again after the reset." + usage_line(key, cost, agents, started, profile))
+        su.dm(config.OWNER, f"{limit_text(profile, e.reset)} It stopped the review of {url}. What Claude said: {e.text[:300]}")
+        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="usage_limit", profile=profile, error=e.text[:200])
     except Stopped:
         state.release(key)
         state.update_job(key, status="stopped", finished_at=time.time())

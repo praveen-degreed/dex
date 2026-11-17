@@ -1,4 +1,6 @@
 """Run `claude -p` as a subprocess, stream its events, and enforce a timeout and a stop."""
+import datetime
+import re
 import subprocess
 import threading
 
@@ -15,6 +17,26 @@ class BudgetExceeded(Exception):
     def __init__(self, cost):
         super().__init__(f"job budget exceeded after ${cost:.2f}")
         self.cost = cost
+
+
+class UsageLimit(Exception):
+    """The Claude account behind this run has reached its usage or rate limit (the run could not start or was cut off)."""
+
+    def __init__(self, text, reset=None):
+        super().__init__("usage limit reached")
+        self.text, self.reset = text, reset  # the raw error text, and when the limit resets (a datetime) if the message said
+
+
+# What a limit message looks like is not documented, so this is deliberately broad. It is only applied to a run that FAILED.
+LIMIT = re.compile(r"usage limit|hit your (usage )?limit|limit reached|reached (your |the )?(usage |rate )?limit|rate[ _-]?limit|too many requests|"
+                   r"\b429\b|quota|credit balance is too low|out of (extra )?usage|resets? (at|in|on)\b|overloaded_error", re.I)
+EPOCH = re.compile(r"limit reached\|(\d{9,11})", re.I)  # the older "Claude AI usage limit reached|<epoch>" form
+
+
+def limit_reset(text):
+    """When the limit resets, if the message says (an epoch after '|'); else None."""
+    m = EPOCH.search(text or "")
+    return datetime.datetime.fromtimestamp(int(m.group(1))) if m else None
 
 
 def run_claude(args, cwd, env, raw_path, err_path, key=None, timeout=None, stop_key=None, label="review"):
@@ -59,5 +81,8 @@ def run_claude(args, cwd, env, raw_path, err_path, key=None, timeout=None, stop_
         raise BudgetExceeded(result.get("total_cost_usd") or 0.0)
     if proc.returncode != 0 or result is None or result.get("is_error"):
         tail = err_path.read_text()[-300:].strip()
+        said = " ".join(str(x) for x in ((result or {}).get("result"), (result or {}).get("error"), tail) if x)  # a limit message is in the result text
+        if LIMIT.search(said):
+            raise UsageLimit(said[:600], limit_reset(said))
         raise RuntimeError(f"claude exited {proc.returncode}" + (f": {tail}" if tail else ""))
     return result

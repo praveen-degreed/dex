@@ -94,6 +94,15 @@ The thread reply ends with a usage line: total tokens (new, cached, output), cos
 labelled an API-equivalent estimate (you are not billed per token). The account is read when the review starts, so a switch during a run does not
 change what is reported; the audit log records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
 
+## When the Claude account reaches its usage limit
+If a run fails because the account behind it (Azure Foundry or the personal plan) hit its usage or rate limit, Dex says so instead of a generic
+"failed": the thread reply tags the requester ("the personal Claude plan has reached its usage limit, it resets around HH:MM, send it again after the
+reset"), the owner gets a DM with what Claude actually said and which `dexctl` command switches account, and the review can be retried on the same
+commit. Dex then remembers the limit and **does not start new reviews on that account** until it resets (the message's reset time, or 30 minutes if
+it gave none); the owner can still force one. Every raw limit message is appended to `limits.jsonl`. The wording of a real limit message is not
+documented, so detection is deliberately broad (usage limit, rate limit, 429, quota, "resets at ..."); it only looks at runs that already failed, and
+`limits.jsonl` shows what Claude really said so the patterns can be tightened.
+
 ## Seeing and controlling spend (`dexctl` and the dashboard)
 ```
 bin/dexctl status                  what is running now (live steps and tokens), the switches and caps

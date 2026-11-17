@@ -67,10 +67,23 @@ class Runner(unittest.TestCase):
             "import sys, json, time\nm = sys.argv[1]\n"
             "print(json.dumps({'type':'assistant','message':{'content':[{'type':'tool_use','name':'Bash','input':{'command':'triage.sh'}}]}}), flush=True)\n"
             "if m == 'slow': time.sleep(30)\nif m == 'fail': sys.exit(3)\n"
+            "if m == 'limit1': print(json.dumps({'type':'result','is_error':True,'result':'Claude AI usage limit reached|1893456000'}), flush=True); sys.exit(1)\n"
+            "if m == 'limit2': print(json.dumps({'type':'result','is_error':True,'result':\"You've hit your limit \u00b7 resets 9pm (Asia/Calcutta)\"}), flush=True); sys.exit(1)\n"
+            "if m == 'limit3': sys.stderr.write('API Error: 429 rate_limit_error'); sys.exit(1)\n"
+            "if m == 'boom': print(json.dumps({'type':'result','is_error':True,'result':'something else broke'}), flush=True); sys.exit(1)\n"
             "if m == 'budget': print(json.dumps({'type':'result','subtype':'error_max_budget_usd','is_error':True,'total_cost_usd':5.25}), flush=True); sys.exit(1)\n"
             "print(json.dumps({'type':'result','is_error': m == 'err','result':'OK','session_id':'sid1'}), flush=True)\n")
     def run_(self, mode, **kw):
         return run_claude([sys.executable, str(self.d / "fake.py"), mode], self.d, None, self.d / "raw", self.d / "err", **kw)
+    def test_a_usage_limit_is_recognised_in_the_result_text_or_stderr_and_a_normal_failure_is_not(self):
+        from dex.claude_runner import UsageLimit
+        with self.assertRaises(UsageLimit) as c: self.run_("limit1")
+        self.assertIn("usage limit reached", c.exception.text); self.assertEqual(c.exception.reset.year, 2030)
+        with self.assertRaises(UsageLimit) as c: self.run_("limit2")
+        self.assertIsNone(c.exception.reset); self.assertIn("resets 9pm", c.exception.text)
+        with self.assertRaises(UsageLimit): self.run_("limit3")
+        with self.assertRaises(RuntimeError) as c: self.run_("boom")
+        self.assertNotIsInstance(c.exception, UsageLimit)
     def test_success_and_progress(self):
         state.jobs.clear(); state.new_job("k", url="u", sha="abcdef1234", repo="r")
         self.assertEqual(self.run_("ok", key="k")["result"], "OK"); self.assertEqual(state.jobs["k"]["activity"], "planning the review")

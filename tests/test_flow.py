@@ -130,7 +130,7 @@ class Routing(Base):
 
 class StartReview(Base):
     def setUp(self):
-        super().setUp(); self.start_review = None
+        super().setUp(); self.start_review = None; state.limit_hits.clear(); self.addCleanup(state.limit_hits.clear)
         for t in ("dex.reviews.start_review",): mock.patch.stopall()
         self.addCleanup(mock.patch.stopall)
         su.client = self.slack; services.policy = Policy(self.tmp, OWNER)
@@ -154,6 +154,18 @@ class StartReview(Base):
 
 NET = "degreed/degreed"; UNET = "https://github.com/degreed/Degreed/pull/57415"
 NET_CFG = {"clone": "/x/net", "skill": "/dg-pr-review {number} --analysis-only", "maestro_skill": "/dg-maestro-review {number}", "dex_posts": True}
+
+class UsageLimitGuard(StartReview):
+    def test_no_new_review_starts_on_an_account_that_said_it_is_out_until_it_resets(self):
+        import datetime as dt, time as _t
+        state.limit_hits.clear(); state.limit_hits["foundry"] = (_t.time(), dt.datetime.now() + dt.timedelta(hours=1), "limit")
+        self.go(); self.assertIn("I did not start the review", self.slack.texts()[0]); self.assertIn("usage limit", self.slack.texts()[0]); self.pool.submit.assert_not_called(); self.assertNotIn(f"{FE}#4626@{'a' * 40}", state.seen)
+        self.go(user=OWNER, force=True); self.pool.submit.assert_called_once()  # the owner can force it
+        self.pool.reset_mock(); self.slack.posts.clear(); state.seen.clear(); state.inflight.clear(); state.limit_hits["foundry"] = (_t.time(), dt.datetime.now() - dt.timedelta(minutes=1), "limit")
+        self.go(); self.pool.submit.assert_called_once(); self.assertNotIn("foundry", state.limit_hits, "a reset limit is forgotten")
+    def test_without_a_reset_time_a_hit_is_believed_for_half_an_hour_only(self):
+        import time as _t
+        state.limit_hits.clear(); state.limit_hits["foundry"] = (_t.time() - 31 * 60, None, "limit"); self.go(); self.pool.submit.assert_called_once()
 
 class DotNetRepo(StartReview):
     def setUp(self):
@@ -244,7 +256,7 @@ class Answer(Base):
 
 class RunReview(Base):
     def setUp(self):
-        super().setUp(); mock.patch.stopall(); self.addCleanup(mock.patch.stopall); su.client = self.slack; services.policy = Policy(self.tmp, OWNER)
+        super().setUp(); mock.patch.stopall(); self.addCleanup(mock.patch.stopall); su.client = self.slack; services.policy = Policy(self.tmp, OWNER); state.limit_hits.clear(); self.addCleanup(state.limit_hits.clear)
         mock.patch.object(reviews.subprocess, "run", return_value=SimpleNamespace(returncode=0)).start()
         self.result = {"result": "review text", "total_cost_usd": 0.5, "permission_denials": []}; self.captured = {}; self.raw_text = None
         def fake_run(args, cwd, env, raw, err, **k):
@@ -378,6 +390,16 @@ class RunReview(Base):
         self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [])
     def test_the_run_may_read_its_own_temp_dir(self):
         self.go(); a = self.captured["args"]; self.assertEqual(a[a.index("--add-dir") + 1], str(config.TMPS / f"degreed_fe-workspace-4626-{'a' * 7}"))
+    def test_a_review_that_hits_the_usage_limit_says_so_tags_the_requester_dms_the_owner_and_allows_a_retry(self):
+        from dex.claude_runner import UsageLimit
+        import datetime as dt
+        (config.DATA / "limits.jsonl").unlink(missing_ok=True); state.limit_hits.clear()
+        self.result = UsageLimit("You've hit your limit, resets 9pm", dt.datetime.now() + dt.timedelta(hours=2)); self.go()
+        t = self.slack.texts(); self.assertTrue(any("<@U1> The review of" in x and "usage limit" in x and "Azure Foundry" in x for x in t), t)
+        dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("resets 9pm", dm[0]["text"]); self.assertIn("dexctl subscription", dm[0]["text"])
+        self.assertEqual(state.jobs[self.key]["outcome"], "usage limit reached"); self.assertNotIn(self.key, state.seen, "a retry stays possible")
+        self.assertEqual(self.slack.reacts[-1]["name"], "hourglass_flowing_sand"); self.assertIn("foundry", state.limit_hits)
+        self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "usage_limit"); self.assertTrue((config.DATA / "limits.jsonl").exists())
     def test_failure_stop_and_cancel(self):
         self.result = RuntimeError("boom"); self.go(); self.assertIn("failed", self.slack.texts()[0]); self.assertNotIn(self.key, state.seen); self.assertEqual(state.jobs[self.key]["status"], "failed"); self.assertEqual(self.slack.reacts[-1]["name"], "x")
         self.slack.posts.clear(); state.seen.add(self.key); self.result = Stopped(); self.go(); self.assertIn("Stopped the review", self.slack.texts()[0]); self.assertEqual(state.jobs[self.key]["status"], "stopped"); self.assertNotIn(self.key, state.seen)
