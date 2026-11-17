@@ -57,7 +57,7 @@ legacy/                the previous single-file bot, kept for reference
 Dex runs one main skill for it, `/review-prs-net` (from the review-skills repo), which routes to the team's own skills in the repo:
 `/dg-maestro-review` when a changed path matches `maestro|aicoach`, otherwise `/dg-pr-review --analysis-only`. Those skills only draft;
 a repo entry (in `repos_extra.json`) with `"dex_posts": true` makes Dex run the skill read-only on a worktree of the PR and then **post
-the draft itself as one comment-only review** (never approve or request changes; a human decides). A skill string may carry
+the draft itself with the skill's decision**: the skill ends its review with `DEX_VERDICT: approve|request_changes|comment`, and Dex posts it with `--approve`, `--request-changes` or `--comment`. Dex downgrades an approve to a comment when no review agent ran, and falls back to a comment on the poster's own PR (GitHub does not allow approving your own). A skill string may carry
 `{number}` / `{url}`; the older `"maestro_skill"` / `"maestro_paths"` keys (routing done by Dex itself) still work for repos without such a skill. A PR that changes anything under `.claude/`
 is refused (the skills come from the PR itself, so it could rewrite its own reviewer); the owner can force it. See `repos_extra.example.json`.
 Not benchmarked yet: the first real run of each skill is the test. The monolith is large (about 35,000 files), so a review worktree takes a while to create.
@@ -86,6 +86,12 @@ falls back** to the other account. The audit log records the profile of every re
 Caveats: `--bare` skips the login, so on the subscription the router and answers run without it (more startup tokens each);
 a subscription has usage limits that Foundry does not; **running private company code through a personal account may break
 company policy: check before you switch.**
+
+## What every finished review reports
+The thread reply ends with a usage line: total tokens (new, cached, output), cost, number of agents, time and the account it ran on, for example
+`_Usage: 2.54M tokens (340K new, 2.20M cached, 3K output) · $2.44 · 5 agents · 7m 36s · account: Azure Foundry_`. On the personal plan the cost is
+labelled an API-equivalent estimate (you are not billed per token). The account is read when the review starts, so a switch during a run does not
+change what is reported; the audit log records the same `profile`, `agents` and `tokens`.
 
 ## Seeing and controlling spend (`dexctl` and the dashboard)
 ```

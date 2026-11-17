@@ -269,6 +269,20 @@ class RunReview(Base):
         self.assertNotIn("--max-budget-usd", self.captured["args"]); last = json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1]); self.assertEqual(last["tokens"], {"fresh": 7, "cache_read": 8, "output": 9})
     def event(self, tool, parent=None):
         return json.dumps({"type": "assistant", "parent_tool_use_id": parent, "message": {"id": "m", "content": [{"type": "tool_use", "id": "t", "name": tool, "input": {}}]}})
+    def test_the_end_of_a_review_reports_tokens_cost_agents_time_and_account(self):
+        self.posted.return_value = ("APPROVED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 340000, "cache_read": 2200000, "output": 3100}
+        self.result = {"result": "x", "total_cost_usd": 2.44, "permission_denials": []}; self.raw_text = "\n".join([self.event("Agent"), self.event("Agent")]); self.go()
+        t = self.slack.texts()[-1]; self.assertIn("2.54M tokens (340K new, 2.20M cached, 3K output)", t); self.assertIn("$2.44", t); self.assertIn("2 agents", t); self.assertIn("account: Azure Foundry", t)
+        self.assertNotIn("API-equivalent", t)
+    def test_on_the_personal_plan_the_cost_is_labelled_an_estimate_and_the_account_is_read_at_the_start(self):
+        import tempfile
+        cfgdir = tempfile.mkdtemp(); (config.DATA / "claude_profiles.json").write_text(json.dumps({"subscription": {"config_dir": cfgdir}})); self.addCleanup((config.DATA / "claude_profiles.json").unlink)
+        self.set_policy({"claude_profile": {"review": "subscription"}}); self.posted.return_value = ("APPROVED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 10, "cache_read": 20, "output": 5}
+        orig = self.result
+        def switch_back_midway(args, cwd, env, raw, err, **k): self.set_policy({}); return orig  # a switch during the run must not change what is reported
+        reviews.run_claude.side_effect = switch_back_midway; self.go()
+        self.assertIn("API-equivalent estimate", self.slack.texts()[-1]); self.assertIn("account: subscription", self.slack.texts()[-1])
+        self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["profile"], "subscription")
     def test_a_review_that_ran_no_agents_is_flagged_and_its_log_kept(self):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Bash"), self.event("Read"), json.dumps({"type": "result"})]); self.go()
         self.assertTrue(any("The skill ran no review agents" in t for t in self.slack.texts()), "the thread reply warns"); dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("NO review agents", dm[0]["text"])
@@ -298,6 +312,33 @@ class RunReview(Base):
         gh = [c[0][0] for c in reviews.subprocess.run.call_args_list if c[0][0][:3] == ["gh", "pr", "review"]]; self.assertEqual(len(gh), 1); cmd = gh[0]
         self.assertEqual((cmd[3], cmd[4], cmd[5], cmd[6]), ("57415", "--repo", NET, "--comment")); self.assertNotIn("--approve", cmd); self.assertNotIn("--request-changes", cmd)
         self.assertIn("comments posted. https://gh/r/1", self.slack.texts()[-1]); self.assertEqual(state.jobs[key]["status"], "done")
+    def dotnet(self, text, raw=None, run=None):
+        cfg = {**NET_CFG, "skill": "/review-prs-net {url}"}; key = f"{NET}#57415@{'a' * 40}"; state.new_job(key, url=UNET, sha="a" * 40, repo=NET); state.inflight.add(key); state.seen.add(key)
+        self.result = {"result": text, "total_cost_usd": 1.0, "permission_denials": []}; self.posted.return_value = ("APPROVED", "https://gh/r/2"); self.raw_text = raw
+        if run: reviews.subprocess.run.side_effect = run
+        reviews.review(UNET, NET, "57415", "a" * 40, key, cfg, "C1", "T", "M", "U1", False)
+        return [c[0][0] for c in reviews.subprocess.run.call_args_list if c[0][0][:3] == ["gh", "pr", "review"]], key
+    def test_the_skills_decision_is_posted_as_approve_or_request_changes(self):
+        agents = "\n".join([self.event("Agent")])
+        gh, key = self.dotnet("## Review\nall good\nDEX_VERDICT: approve", raw=agents); self.assertEqual(len(gh), 1); self.assertIn("--approve", gh[0]); self.assertNotIn("--comment", gh[0])
+        self.assertNotIn("DEX_VERDICT", (config.TMPS / "x").parent.joinpath("none").name)  # (the verdict line itself is stripped from the posted body, checked below)
+        reviews.subprocess.run.reset_mock(); reviews.subprocess.run.side_effect = None; state.seen.add(key)
+        gh, _ = self.dotnet("## Review\nbad\nDEX_VERDICT: request_changes", raw=agents); self.assertIn("--request-changes", gh[0])
+        reviews.subprocess.run.reset_mock(); reviews.subprocess.run.side_effect = None
+        gh, _ = self.dotnet("## Review\nno decision line", raw=agents); self.assertIn("--comment", gh[0])
+    def test_an_approve_with_no_agents_is_downgraded_to_a_comment(self):
+        gh, _ = self.dotnet("## Review\nDEX_VERDICT: approve", raw="\n".join([self.event("Bash")])); self.assertIn("--comment", gh[0]); self.assertNotIn("--approve", gh[0])
+    def test_an_own_pull_request_falls_back_to_a_comment(self):
+        calls = []
+        def run(cmd, **kw):
+            calls.append(cmd)
+            if "--approve" in cmd: return SimpleNamespace(returncode=1, stderr="Review Can not approve your own pull request", stdout="")
+            return SimpleNamespace(returncode=0, stderr="", stdout="")
+        gh, _ = self.dotnet("## Review\nDEX_VERDICT: approve", raw=self.event("Agent"), run=run); flags = [[f for f in c if f in ("--approve", "--comment", "--request-changes")][0] for c in gh]
+        self.assertEqual(flags, ["--approve", "--comment"])
+    def test_the_verdict_line_is_split_off_the_text(self):
+        self.assertEqual(reviews.split_verdict("A\nB\n  DEX_VERDICT: Request_Changes  \n"), ("request_changes", "A\nB")); self.assertEqual(reviews.split_verdict("no line"), ("comment", "no line"))
+        self.assertEqual(reviews.split_verdict("DEX_VERDICT: bogus"), ("comment", "DEX_VERDICT: bogus"))
     def test_dotnet_review_with_no_text_posts_nothing_and_fails(self):
         cfg = {**NET_CFG, "skill": "/dg-pr-review {number} --analysis-only"}; key = f"{NET}#57415@{'a' * 40}"; state.new_job(key, url=UNET, sha="a" * 40, repo=NET); state.inflight.add(key)
         self.result = {"result": "  ", "total_cost_usd": 0.1, "permission_denials": []}; reviews.review(UNET, NET, "57415", "a" * 40, key, cfg, "C1", "T", "M", "U1", False)
