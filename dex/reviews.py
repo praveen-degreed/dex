@@ -20,11 +20,15 @@ log = logging.getLogger("dex")
 pool = ThreadPoolExecutor(max_workers=config.CONCURRENCY)
 
 
-def prompt(skill, url, sha, post):
+def prompt(skill, url, sha, post, tmp=None):
     lessons = config.LESSONS.read_text() if config.LESSONS.exists() else ""
     if post:
         mode = ("Post your review to the PR yourself, exactly as the skill normally does. The requester tagged the "
-                "owner for this review, so the confirmation step is satisfied. Never merge, push or commit.")
+                "owner for this review, so the confirmation step is satisfied. Never merge, push or commit. "
+                + (f"To post: first write the review body to {tmp}/review-body.md with the Write tool, then run "
+                   f"`gh pr review <number> --repo <owner/repo> --comment|--approve|--request-changes --body-file {tmp}/review-body.md` "
+                   "(one command). Never pass a multi-line body inline with --body or a heredoc: a body with a line that starts "
+                   "with # is denied. " if tmp else ""))
     else:
         mode = ("DRAFT MODE: do NOT post anything to GitHub (no comments, reviews, approvals). Output the complete "
                 "review as Markdown (category scoreboard, things to address, final verdict line), with no preamble.")
@@ -110,7 +114,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         subprocess.run(["git", "-C", clone, "fetch", "origin", f"pull/{number}/head"], check=True, capture_output=True)
         subprocess.run(["git", "-C", clone, "worktree", "add", "--detach", str(wt), sha], check=True, capture_output=True)
         result = run_claude(
-            ["claude", "-p", prompt(cfg["skill"], url, sha, post),
+            ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp),
              "--output-format", "stream-json", "--verbose",
              "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied]
             + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else []),

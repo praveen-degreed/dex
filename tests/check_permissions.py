@@ -10,7 +10,7 @@ from dex.tools import review_tools, _SKILLS
 
 work = Path(tempfile.mkdtemp(prefix="permcheck."))
 (work / "sub").mkdir()
-allowed, denied = review_tools(str(work / "tmp"), False)
+allowed, denied = review_tools(str(work / "tmp"), True)  # post=True: the skill posts itself
 
 OK, NO = "allowed", "denied"
 cases = []
@@ -24,6 +24,9 @@ cases += [
     ("git show", "git show HEAD:README.md", OK),
     ("chain: cd && ls | head", "cd sub && ls | head -3", OK),
     ("chain: script after cd", f"cd sub && {_SKILLS}/review-prs/scripts/verify-citations.sh . a/b.ts:1", OK),
+    ("post with --body-file", f"gh pr review 1 --repo zz-none-org/none --comment --body-file {work}/tmp/review-body.md", OK),
+    ("inline multi-line body with # line is denied", 'gh pr review 1 --repo zz-none-org/none --comment --body "## Title\n\n### Sub\n\ntext"', NO),
+    ("gh pr merge is blocked even when posting is on", "gh pr merge 1 --repo zz-none-org/none", NO),
     ("gh api POST is blocked", "gh api repos/degreed/fe-workspace/pulls/1/reviews -X POST", NO),
     ("gh pr merge is blocked", "gh pr merge 1 --repo degreed/fe-workspace", NO),
     ("git push is blocked", "git push origin main", NO),
