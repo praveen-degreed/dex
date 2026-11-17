@@ -28,6 +28,14 @@ def pr_info(url):
     return {"sha": sha, "state": state, "is_fork": fork == "true", "files": int(files)}
 
 
+def pr_paths(url):
+    """The changed file paths of a PR (gh returns at most the first 100). Raises RuntimeError if gh cannot read it."""
+    r = subprocess.run(["gh", "pr", "view", url, "--json", "files", "-q", ".files[].path"], capture_output=True, text=True)
+    if r.returncode:
+        raise RuntimeError(r.stderr.strip()[:300] or "gh pr view failed")
+    return [p for p in r.stdout.splitlines() if p]
+
+
 def posted_review(repo, number, since):
     """(state, url) of the newest review by the gh user on the PR submitted since `since`, else None."""
     try:

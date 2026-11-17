@@ -10,7 +10,7 @@ BOTQ = str(Path(__file__).resolve().parent.parent / "bin" / "botq")  # read-only
 
 REVIEW_READ = [
     "Read", "Grep", "Glob", "Skill", "Agent",
-    "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)", "Bash(gh pr list:*)",
+    "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)", "Bash(gh pr list:*)", "Bash(gh repo view:*)",
     "Bash(gh api repos/*/pulls/*/reviews)",  # exact form only, so `-X POST` cannot be appended
     "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)",
     "Bash(git grep:*)", "Bash(git ls-files:*)", "Bash(git status:*)",

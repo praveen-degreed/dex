@@ -152,6 +152,24 @@ class StartReview(Base):
         self.assertEqual(state.jobs[f"{FE}#4626@{'a' * 40}"]["status"], "queued"); self.assertEqual(state.threads[("C1", "T")], f"{FE}#4626@{'a' * 40}")
         self.assertIn("Review started", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[0]["name"], "eyes"); self.assertIn("review 1", services.policy.summary("U1"))
 
+NET = "degreed/degreed"; UNET = "https://github.com/degreed/Degreed/pull/57415"
+NET_CFG = {"clone": "/x/net", "skill": "/dg-pr-review {number} --analysis-only", "maestro_skill": "/dg-maestro-review {number}", "dex_posts": True}
+
+class DotNetRepo(StartReview):
+    def setUp(self):
+        super().setUp(); config.REPOS[NET] = dict(NET_CFG); self.addCleanup(config.REPOS.pop, NET, None); self.paths = mock.patch("dex.github.pr_paths").start()
+    def test_a_maestro_pr_gets_the_maestro_skill_and_a_normal_one_the_general_skill(self):
+        self.paths.return_value = ["trunk/Degreed.Common.Standard/Services/Maestro/MaestroFieldConfig.cs", "README.md"]; self.go(UNET)
+        self.assertEqual(self.pool.submit.call_args[0][6]["skill"], "/dg-maestro-review {number}")
+        self.pool.reset_mock(); state.seen.clear(); state.inflight.clear(); self.paths.return_value = ["trunk/Degreed.Core/Orders/OrderService.cs"]; self.go(UNET, force=True)
+        self.assertEqual(self.pool.submit.call_args[0][6]["skill"], "/dg-pr-review {number} --analysis-only")
+    def test_a_pr_that_changes_claude_files_is_refused_unless_the_owner_forces_it(self):
+        self.paths.return_value = ["trunk/a.cs", ".claude/skills/dg-pr-review/SKILL.md"]; self.go(UNET)
+        self.assertIn("under `.claude/`", self.slack.texts()[0]); self.pool.submit.assert_not_called(); self.assertNotIn(f"{NET}#57415@{'a' * 40}", state.seen)
+        self.go(UNET, user=OWNER, force=True); self.pool.submit.assert_called_once()
+    def test_repos_without_those_settings_are_untouched(self):
+        self.go(U4626); self.paths.assert_not_called(); self.assertEqual(self.pool.submit.call_args[0][6], config.REPOS[FE])
+
 class SizeGuard(StartReview):
     def test_big_prs_are_refused_unless_the_owner_forces(self):
         key = f"{FE}#4626@{'a' * 40}"; self.set_policy({"max_pr_files": 50}); self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "files": 83}
@@ -272,6 +290,18 @@ class RunReview(Base):
     def test_a_review_set_to_a_profile_that_is_not_usable_fails_and_never_uses_the_other_account(self):
         self.set_policy({"claude_profile": {"review": "typo"}}); self.go()
         self.assertEqual(state.jobs[self.key]["status"], "failed"); self.assertNotIn("args", self.captured, "claude was not started"); self.assertTrue(any("typo" in t for t in self.slack.texts()))
+    def test_dex_posts_the_draft_of_a_dotnet_review_as_one_comment(self):
+        cfg = {**NET_CFG, "skill": "/dg-maestro-review {number}"}; key = f"{NET}#57415@{'a' * 40}"; state.new_job(key, url=UNET, sha="a" * 40, repo=NET); state.inflight.add(key); state.seen.add(key)
+        self.result = {"result": "## Review\nlooks fine", "total_cost_usd": 1.2, "permission_denials": []}; self.posted.return_value = ("COMMENTED", "https://gh/r/1")
+        reviews.review(UNET, NET, "57415", "a" * 40, key, cfg, "C1", "T", "M", "U1", False)
+        a = self.captured["args"]; self.assertEqual(a[2].split("\n")[0], "/dg-maestro-review 57415"); self.assertIn("DRAFT MODE", a[2]); self.assertNotIn("gh pr review", a[a.index("--allowedTools") + 1], "Claude itself may not post")
+        gh = [c[0][0] for c in reviews.subprocess.run.call_args_list if c[0][0][:3] == ["gh", "pr", "review"]]; self.assertEqual(len(gh), 1); cmd = gh[0]
+        self.assertEqual((cmd[3], cmd[4], cmd[5], cmd[6]), ("57415", "--repo", NET, "--comment")); self.assertNotIn("--approve", cmd); self.assertNotIn("--request-changes", cmd)
+        self.assertIn("comments posted. https://gh/r/1", self.slack.texts()[-1]); self.assertEqual(state.jobs[key]["status"], "done")
+    def test_dotnet_review_with_no_text_posts_nothing_and_fails(self):
+        cfg = {**NET_CFG, "skill": "/dg-pr-review {number} --analysis-only"}; key = f"{NET}#57415@{'a' * 40}"; state.new_job(key, url=UNET, sha="a" * 40, repo=NET); state.inflight.add(key)
+        self.result = {"result": "  ", "total_cost_usd": 0.1, "permission_denials": []}; reviews.review(UNET, NET, "57415", "a" * 40, key, cfg, "C1", "T", "M", "U1", False)
+        self.assertEqual(state.jobs[key]["status"], "failed"); self.assertFalse([c for c in reviews.subprocess.run.call_args_list if c[0][0][:3] == ["gh", "pr", "review"]])
     def test_no_posted_review_warns(self):
         self.posted.return_value = None; self.go(); self.assertIn("could not find a posted review", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[-1]["name"], "warning")
     def test_fork_is_draft_only(self):

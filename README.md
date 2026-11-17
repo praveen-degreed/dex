@@ -53,6 +53,15 @@ legacy/                the previous single-file bot, kept for reference
 4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Code changes load only on a restart (tmux does not reload code or restart a crashed bot). **Do not restart while a review runs: it kills it** (check `pgrep -fl 'claude.* -p'` first). A killed review leaves nothing posted; send the link again with `force`.
 5. The review skills are installed from GitHub `main` (`install.sh all` from `praveen-degreed/review-skills`, which holds both the FE and the BE skill), not from local files: a skill change takes effect only after it is merged and reinstalled. Each review reads the installed skill fresh, so no Dex restart is needed for that.
 
+## Reviewing the .NET monolith (`degreed/Degreed`)
+Its review skills live in the repo (`/dg-pr-review`, `/dg-maestro-review`) and only draft: they never post. A repo entry (in
+`repos_extra.json`) with `"dex_posts": true` makes Dex run the skill read-only on a worktree of the PR and then **post the draft
+itself as one comment-only review** (never approve or request changes; a human decides). With `"maestro_skill"` set, a PR whose
+changed paths match `maestro_paths` (default `maestro|aicoach`, case-insensitive) is reviewed with `/dg-maestro-review`, any other PR
+with `/dg-pr-review ... --analysis-only`. A skill string may carry `{number}` / `{url}`. A PR that changes anything under `.claude/`
+is refused (the skills come from the PR itself, so it could rewrite its own reviewer); the owner can force it. See `repos_extra.example.json`.
+Not benchmarked yet: the first real run of each skill is the test. The monolith is large (about 35,000 files), so a review worktree takes a while to create.
+
 ## Switching the Claude account (Azure Foundry <-> a Claude subscription)
 Every `claude` run (reviews, Slack answers, the router) uses the account in the environment Dex was started with: today Azure
 Foundry. You can send any kind of run to a personal Claude subscription instead, and back, **without a restart**:

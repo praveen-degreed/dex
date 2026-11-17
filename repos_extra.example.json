@@ -1,1 +1,15 @@
-{"degreed/some-repo": {"clone": "/path/to/some-repo", "skill": "/review-prs-be", "default_branch": "main"}}
+{
+  "degreed/some-repo": {
+    "clone": "/path/to/some-repo",
+    "skill": "/review-prs-be",
+    "default_branch": "main"
+  },
+  "degreed/some-dotnet-repo": {
+    "clone": "/path/to/repo",
+    "skill": "/dg-pr-review {number} --analysis-only",
+    "maestro_skill": "/dg-maestro-review {number}",
+    "maestro_paths": "maestro|aicoach",
+    "dex_posts": true,
+    "default_branch": "main"
+  }
+}

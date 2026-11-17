@@ -7,6 +7,7 @@ import datetime
 import json
 import logging
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -21,6 +22,15 @@ log = logging.getLogger("dex")
 pool = ThreadPoolExecutor(max_workers=config.CONCURRENCY)
 
 
+def choose_skill(cfg, paths):
+    """The skill for a PR: the repo's maestro_skill when a changed path matches maestro_paths (case-insensitive,
+    default "maestro|aicoach"), else its normal skill. Repos without maestro_skill always use `skill`."""
+    ms = cfg.get("maestro_skill")
+    if ms and any(re.search(cfg.get("maestro_paths") or "maestro|aicoach", p, re.I) for p in paths):
+        return ms
+    return cfg["skill"]
+
+
 def prompt(skill, url, sha, post, tmp=None):
     lessons = config.LESSONS.read_text() if config.LESSONS.exists() else ""
     if post:
@@ -33,8 +43,10 @@ def prompt(skill, url, sha, post, tmp=None):
     else:
         mode = ("DRAFT MODE: do NOT post anything to GitHub (no comments, reviews, approvals). Output the complete "
                 "review as Markdown (category scoreboard, things to address, final verdict line), with no preamble.")
+    number = url.rstrip("/").rsplit("/", 1)[-1]
+    head = skill.format(number=number, url=url) if "{" in skill else f"{skill} {url}"  # a skill string may carry its own arguments
     return (
-        f"{skill} {url}\n\n"
+        f"{head}\n\n"
         f"The PR head is pinned at {sha}; review exactly that commit. {mode} "
         "Note: checks.txt from fetch-pr.sh lists only FAILING checks; an empty file means no check is failing, "
         "it does not mean CI could not be read. This run only allows single, simple commands: issue one command per Bash "
@@ -101,6 +113,16 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_size", files=info.get("files"))
         return su.reply(channel, thread_ts, f"{url} changes {info['files']} files, and reviews are limited to {cap} files right now because big reviews are expensive. The owner can override this.")
 
+    if cfg.get("maestro_skill") or cfg.get("dex_posts"):  # repos whose skills live in the repo itself
+        try:
+            paths = github.pr_paths(url)
+        except RuntimeError as err:
+            return su.dm(config.OWNER, f"Could not read the files of {url}: {err}")
+        if any(p.startswith(".claude/") for p in paths) and not (force and user == config.OWNER):
+            services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_claude_dir")
+            return su.reply(channel, thread_ts, f"{url} changes files under `.claude/` (skills, agents or hooks). This repo's review skills come from the PR "
+                                                "itself, so a PR could rewrite its own reviewer; I won't run them. The owner can force it, or review it by hand.")
+        cfg = {**cfg, "skill": choose_skill(cfg, paths)}
     key = f"{repo}#{number}@{sha}"
     with state.lock:
         if key in state.inflight:
@@ -129,7 +151,8 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         state.update_job(key, status="stopped", finished_at=time.time())
         state.finish_job(key)
         return su.reply(channel, thread_ts, "Cancelled before it started.")
-    post = not is_fork  # the skill posts itself, except on untrusted forks (draft only, shown in Slack)
+    dex_posts = bool(cfg.get("dex_posts")) and not is_fork  # the skill only drafts; Dex posts the draft as one comment-only review
+    post = not is_fork and not dex_posts  # otherwise the skill posts itself, except on untrusted forks (draft only, shown in Slack)
     name = f"{repo.replace('/', '_')}-{number}-{sha[:7]}"
     wt, tmp = config.WORKTREES / name, config.TMPS / name
     tmp.mkdir(exist_ok=True)
@@ -156,6 +179,17 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         )
         cost = result.get("total_cost_usd") or 0.0
         draft.write_text(result.get("result") or "")
+        if dex_posts:
+            body = (result.get("result") or "").strip()
+            if not body:
+                raise RuntimeError("the review skill produced no text to post")
+            body_file = tmp / "review-body.md"
+            body_file.write_text(body[:60000] + f"\n\n---\n:robot: AI-assisted review (`{cfg['skill'].split()[0].lstrip('/')}`), posted as a comment by Dex. "
+                                 "It does not approve or request changes; a human decides.\n")
+            posted = subprocess.run(["gh", "pr", "review", number, "--repo", repo, "--comment", "--body-file", str(body_file)], capture_output=True, text=True)
+            if posted.returncode:
+                raise RuntimeError(f"gh pr review failed: {(posted.stderr or '')[:200]}")
+            post = True  # from here on it is looked up like a review the skill posted itself
         denials = result.get("permission_denials") or []
         if denials:
             def shown(d):
