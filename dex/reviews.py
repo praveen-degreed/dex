@@ -44,6 +44,16 @@ def prompt(skill, url, sha, post, tmp=None):
     )
 
 
+def remove_worktree(clone, wt):
+    """Remove one review's worktree folder (and git's record of it). Only ever touches a folder directly under worktrees/."""
+    if wt.parent != config.WORKTREES:
+        return
+    r = subprocess.run(["git", "-C", clone, "worktree", "remove", "--force", str(wt)], capture_output=True)
+    if r.returncode:
+        shutil.rmtree(wt, ignore_errors=True)
+    subprocess.run(["git", "-C", clone, "worktree", "prune"], capture_output=True)
+
+
 def job_tokens(key):
     with state.lock:
         return dict((state.jobs.get(key) or {}).get("tokens") or {})
@@ -111,6 +121,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
     cost = 0.0
     try:
         subprocess.run(["git", "-C", clone, "fetch", "origin", f"pull/{number}/head"], check=True, capture_output=True)
+        remove_worktree(clone, wt)  # a run that was killed leaves its folder behind; start from a clean one
         subprocess.run(["git", "-C", clone, "worktree", "add", "--detach", str(wt), sha], check=True, capture_output=True)
         result = run_claude(
             ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp),
@@ -185,9 +196,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
     finally:
         services.policy.add_cost(user, cost, job_tokens(key))
         state.finish_job(key)
-        r = subprocess.run(["git", "-C", clone, "worktree", "remove", "--force", str(wt)], capture_output=True)
-        if r.returncode:
-            shutil.rmtree(wt, ignore_errors=True)
+        remove_worktree(clone, wt)
         if tmp.parent == config.TMPS:  # only ever delete this review's own folder under tmp/
             shutil.rmtree(tmp, ignore_errors=True)
         # Prune AFTER the delete: worktrees the skill created inside tmp/ are only prunable once their dir is gone.
