@@ -4,6 +4,7 @@ The review skill itself decides and posts the review to GitHub; this module laun
 reports "started" and "done" in Slack.
 """
 import datetime
+import json
 import logging
 import os
 import shutil
@@ -42,6 +43,27 @@ def prompt(skill, url, sha, post, tmp=None):
         "as a whole.\n\n"
         f"Reviewer's standing lessons:\n{lessons}"
     )
+
+
+def count_agent_calls(raw):
+    """How many review agents the orchestrator launched, from the saved event log (None if there is no log)."""
+    try:
+        text = raw.read_text()
+    except OSError:
+        return None
+    n = 0
+    for line in text.splitlines():
+        if '"tool_use"' not in line:
+            continue
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if ev.get("type") != "assistant" or ev.get("parent_tool_use_id"):
+            continue
+        n += sum(1 for c in (ev.get("message") or {}).get("content") or []
+                 if isinstance(c, dict) and c.get("type") == "tool_use" and c.get("name") in ("Agent", "Task"))
+    return n
 
 
 def remove_worktree(clone, wt):
@@ -141,13 +163,20 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             log.warning("%d tool call(s) denied for %s", len(denials), key)
             su.dm(config.OWNER, f"Review of {url}: {len(denials)} tool call(s) were denied by the bot's permission rules:\n"
                   + "\n".join(shown(d) for d in denials[:8]))
+        agents = count_agent_calls(raw)
+        no_agents = agents == 0
+        if no_agents:
+            log.warning("review of %s ran no review agents", key)
+            su.dm(config.OWNER, f"Review of {url} ran NO review agents: the skill reviewed alone. Treat it as a quick read. "
+                  f"The raw log is kept in {raw.name}.")
         link = ""
         if post:
             found = github.posted_review(repo, number, started)
             if found:
                 gh_state, link = found
                 outcome = github.REVIEW_LABEL.get(gh_state, gh_state.lower())
-                su.reply(channel, thread_ts, f"Review done on {url}: {outcome}. {link}")
+                su.reply(channel, thread_ts, f"Review done on {url}: {outcome}. {link}"
+                         + ("\n:warning: The skill ran no review agents (it reviewed alone), so treat this as a quick read, not a full review." if no_agents else ""))
                 done = "white_check_mark"
             else:
                 outcome = "finished, but no posted review was found"
@@ -163,11 +192,11 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         state.update_job(key, status="done", outcome=outcome, link=link, finished_at=time.time())
         su.react_remove(channel, msg_ts, "eyes")
         su.react(channel, msg_ts, done)
-        if done == "white_check_mark" and not denials and outcome != github.REVIEW_LABEL.get("COMMENTED", "comments posted"):
+        if done == "white_check_mark" and not denials and not no_agents and outcome != github.REVIEW_LABEL.get("COMMENTED", "comments posted"):
             raw.unlink(missing_ok=True)  # keep the raw event log when the run failed, was denied something, posted nothing or
             # was comment-only (the skill downgrades when a reviewer did not finish: the log shows why)
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, sha=sha[:7],
-                              decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials), tokens=job_tokens(key))
+                              decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials), agents=agents, tokens=job_tokens(key))
     except BudgetExceeded as e:
         cost = e.cost
         state.release(key)

@@ -223,9 +223,10 @@ class RunReview(Base):
     def setUp(self):
         super().setUp(); mock.patch.stopall(); self.addCleanup(mock.patch.stopall); su.client = self.slack; services.policy = Policy(self.tmp, OWNER)
         mock.patch.object(reviews.subprocess, "run", return_value=SimpleNamespace(returncode=0)).start()
-        self.result = {"result": "review text", "total_cost_usd": 0.5, "permission_denials": []}; self.captured = {}
+        self.result = {"result": "review text", "total_cost_usd": 0.5, "permission_denials": []}; self.captured = {}; self.raw_text = None
         def fake_run(args, cwd, env, raw, err, **k):
             self.captured.update(args=args, env=env, k=k); r = self.result
+            if self.raw_text is not None: raw.write_text(self.raw_text)
             if isinstance(r, Exception): raise r
             return r
         mock.patch.object(reviews, "run_claude", side_effect=fake_run).start(); self.posted = mock.patch.object(reviews.github, "posted_review").start()
@@ -248,6 +249,17 @@ class RunReview(Base):
     def test_without_a_cap_there_is_no_flag_and_tokens_reach_the_audit_log(self):
         self.posted.return_value = ("COMMENTED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 7, "cache_read": 8, "output": 9}; self.go()
         self.assertNotIn("--max-budget-usd", self.captured["args"]); last = json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1]); self.assertEqual(last["tokens"], {"fresh": 7, "cache_read": 8, "output": 9})
+    def event(self, tool, parent=None):
+        return json.dumps({"type": "assistant", "parent_tool_use_id": parent, "message": {"id": "m", "content": [{"type": "tool_use", "id": "t", "name": tool, "input": {}}]}})
+    def test_a_review_that_ran_no_agents_is_flagged_and_its_log_kept(self):
+        self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Bash"), self.event("Read"), json.dumps({"type": "result"})]); self.go()
+        self.assertTrue(any("The skill ran no review agents" in t for t in self.slack.texts()), "the thread reply warns"); dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("NO review agents", dm[0]["text"])
+        last = json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1]); self.assertEqual(last["agents"], 0)
+        self.assertTrue((config.DRAFTS / f"degreed_fe-workspace-4626-{'a' * 7}.jsonl").exists(), "the log is kept so the shortcut can be inspected")
+    def test_a_review_with_agents_is_not_flagged(self):
+        self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Agent"), self.event("Agent"), self.event("Agent", parent="x")]); self.go()
+        self.assertFalse(any("no review agents" in t.lower() for t in self.slack.texts())); self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [])
+        self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["agents"], 2, "only the orchestrator's launches count, not a sub-agent's own calls")
     def test_no_posted_review_warns(self):
         self.posted.return_value = None; self.go(); self.assertIn("could not find a posted review", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[-1]["name"], "warning")
     def test_fork_is_draft_only(self):
