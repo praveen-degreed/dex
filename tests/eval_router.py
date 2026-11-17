@@ -25,6 +25,8 @@ CASES = [
     ("review: bare PR link to the bot", f"<@BOT> {U4626}", ctx(bot=True, urls=[U4626]), {"review"}, True, None),
     ("review: 'yes review' in a thread whose parent is a PR link", "yes review", ctx(convo=True, parent=U4626, last_bot="You sent PR #4626 without a question, so here is where it stands. Tell me if you wanted something else."), {"review"}, True, None),
     ("review: 'review it' in a thread whose parent is a PR link", "review it", ctx(parent=U4626), {"review"}, True, None),
+    ("review: several bare PR links to the bot", "<@BOT> " + " ".join(f"https://github.com/degreed/fe-workspace/pull/{n}" for n in (4710, 4711, 4712)) + " https://github.com/degreed/degreed-assistant/pull/473",
+     ctx(bot=True, urls=[f"https://github.com/degreed/fe-workspace/pull/{n}" for n in (4710, 4711, 4712)] + ["https://github.com/degreed/degreed-assistant/pull/473"]), {"review"}, True, None),
     ("status: plain", "<@BOT> status", ctx(bot=True), {"status"}, True, None),
     ("status: in thread, no mention", "any update?", ctx(review="running"), {"status"}, True, None),
     ("status: phrased without keywords", "how's the review looking so far?", ctx(review="running"), {"status"}, True, None),

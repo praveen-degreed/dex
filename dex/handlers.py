@@ -15,6 +15,7 @@ STATUS_WORDS = re.compile(r"\b(status|progress|updates?|eta|how long|done yet|fi
 FORCE = re.compile(r"\bforce\b", re.I)
 
 CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage", "control": "usage"}
+MAX_LINKS = int(__import__("os").environ.get("MAX_LINKS_PER_MESSAGE", "5"))  # PRs reviewed per message
 LOW_CONFIDENCE = 0.5  # below this the router is guessing: hand the message to the assistant, which can ask
 
 
@@ -150,10 +151,20 @@ def handle(event):
         return su.reply(channel, thread_ts, why)
 
     if intent == "review":
-        m = PR_URL.search(text) or PR_URL.search(info.get("parent_text", ""))
-        if not m:
+        found = list(PR_URL.finditer(text)) or list(PR_URL.finditer(info.get("parent_text", "")))
+        matches = list({m.group(0).lower(): m for m in found}.values())  # one per distinct PR, in the order given
+        if not matches:
             return su.reply(channel, thread_ts, "Which PR should I review? Send me the link.")
-        return reviews.start_review(channel, thread_ts, msg_ts, user, m, force=verdict["force"] or bool(FORCE.search(text)))
+        force = verdict["force"] or bool(FORCE.search(text))
+        if len(matches) > MAX_LINKS:
+            su.reply(channel, thread_ts, f"You sent {len(matches)} PRs; I take up to {MAX_LINKS} per message. "
+                     f"Reviewing the first {MAX_LINKS}; send the rest in another message.")
+            matches = matches[:MAX_LINKS]
+        elif len(matches) > 1:
+            su.reply(channel, thread_ts, f"{len(matches)} PRs: reviewing them one at a time, in the order you sent them.")
+        for m in matches:
+            reviews.start_review(channel, thread_ts, msg_ts, user, m, force=force)
+        return
     if intent == "status":
         return answer_status(text, channel, thread_ts, review_key)
     if intent == "stop":
