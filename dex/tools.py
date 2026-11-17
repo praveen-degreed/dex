@@ -14,6 +14,9 @@ REVIEW_READ = [
     "Bash(gh api repos/*/pulls/*/reviews)",  # exact form only, so `-X POST` cannot be appended
     "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)",
     "Bash(git grep:*)", "Bash(git ls-files:*)", "Bash(git status:*)",
+    # the same read-only commands with `git -C <dir>`: only these subcommands, so `git -C <dir> push` or `commit` stay unallowed
+    "Bash(git -C * grep *)", "Bash(git -C * log *)", "Bash(git -C * show *)", "Bash(git -C * diff *)", "Bash(git -C * blame *)",
+    "Bash(git -C * ls-files *)", "Bash(git -C * rev-parse *)", "Bash(git -C * status *)",
     # `/*`, not `/:*`: the `:*` form needs a space after the prefix, so it never matched `.../scripts/name.sh` (verified).
     f"Bash({_SKILLS}/review-prs/scripts/*)", f"Bash({_SKILLS}/review-prs-be/scripts/*)", f"Bash({_SKILLS}/review-prs-net/scripts/*)",
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
@@ -22,7 +25,7 @@ REVIEW_READ = [
     "Bash(cd:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)", "Bash(pwd)",
 ]
 REVIEW_POST = ["Bash(gh pr review:*)", "Bash(gh pr comment:*)"]  # added only when the skill may post
-REVIEW_DENIED = ["Bash(gh pr merge:*)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(*/../*)"]  # last: no path climbing out of the scripts dirs
+REVIEW_DENIED = ["Bash(gh pr merge:*)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(git -C * push *)", "Bash(git -C * commit *)", "Bash(git -C * checkout *)", "Bash(git -C * reset *)", "Bash(*/../*)"]  # last: no path climbing out of the scripts dirs
 
 
 def review_tools(tmp, post):

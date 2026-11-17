@@ -3,6 +3,7 @@
 The running list of what is open for Dex and the review skills. Newest first. Status: open, decision, in progress, done.
 
 ## Requested 2026-11-17
+- **done (needs restart + push)** Allow the read-only `git -C <dir> grep|log|show|diff|blame|ls-files|rev-parse|status` a review run uses on its worktree (it was denied: only plain `git grep` was allowed); `git -C <dir> push|commit|checkout|reset` stay blocked. Found in the #1818 review.
 - **done (needs restart + push)** A review no agent worked on, or a `DEX_VERDICT: skip`, posts nothing to GitHub (only a Slack reply to the requester); draft PRs ARE reviewed (decided 2026-11-17). Caused by the first .NET run on a draft PR (#58217): the skill stopped at preflight and Dex still posted its 'review not run' text as a comment on that PR. That comment is still on the PR and needs to be hidden or deleted by hand; #58217 needs a rerun.
 - **done (needs restart + push)** Tag the person who requested a review, in the thread reply, when it finishes, fails or stops at the cost limit.
 - **in progress** Post a real decision for every review: the .NET flow was comment-only; now the skill ends with `DEX_VERDICT: approve|request_changes|comment` and Dex posts `--approve` / `--request-changes` / `--comment` (approve downgraded when no agent ran; own PR falls back to a comment). Dex side done; the skill side is `review-skills` PR #5, waiting for merge. Note: an approval posted under the owner's login counts like a human approval for checks such as bot-approval-guard.
