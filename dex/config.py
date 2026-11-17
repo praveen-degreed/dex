@@ -19,6 +19,12 @@ OWNER = os.environ["OWNER_USER_ID"]
 ALLOWED = set(filter(None, os.environ.get("ALLOWED_USERS", "").split(",")))
 # {"owner/repo": {"clone": "/path", "skill": "/review-prs", "default_branch": "main"}}, keys lowercased
 REPOS = {k.lower(): v for k, v in json.loads(os.environ["REPOS"]).items()}
+# More reviewable repos without touching .env: repos_extra.json in the data dir, same shape (not secret, ignored by git).
+try:
+    _extra = json.loads((DATA / "repos_extra.json").read_text())
+except (OSError, ValueError):
+    _extra = {}
+REPOS.update({k.lower(): v for k, v in _extra.items() if isinstance(v, dict) and v.get("clone") and v.get("skill")} if isinstance(_extra, dict) else {})
 
 BOT_NAME = os.environ.get("BOT_NAME", "Dex")  # how the assistant names itself in its prompts; the Slack name is set in the Slack app
 GITHUB_ORG = os.environ.get("GITHUB_ORG", "degreed")  # org-wide searches ("is anyone working on X") run over this org

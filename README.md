@@ -15,6 +15,7 @@ bin/botq               read-only helper the assistant runs (code, history, peopl
 bin/dexctl             see what Dex is doing and change its switches
 people.json            who is who (Slack id -> name, GitHub login): edit freely
 readonly_repos.json    repos the assistant may read and search but never review (e.g. the monolith)
+repos_extra.json       more reviewable repos (same shape as REPOS in .env), so .env stays untouched; see repos_extra.example.json
 dex/
   config.py            settings, paths, logging (BOT_DATA_DIR relocates all runtime data)
   tools.py             tool allowlists / deny lists for the claude runs  <- the safety boundary

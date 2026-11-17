@@ -4,6 +4,7 @@
 people.json
 policy.json
 readonly_repos.json
+repos_extra.json
 commands.json
 
 # Runtime data, logs and per-person usage
