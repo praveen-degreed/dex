@@ -15,6 +15,7 @@ bin/botq               read-only helper the assistant runs (code, history, peopl
 bin/dexctl             see what Dex is doing and change its switches
 people.json            who is who (Slack id -> name, GitHub login): edit freely
 readonly_repos.json    repos the assistant may read and search but never review (e.g. the monolith)
+claude_profiles.json    optional: redefine or add Claude accounts (see "Switching the Claude account"); claude_profiles.example.json
 repos_extra.json       more reviewable repos (same shape as REPOS in .env), so .env stays untouched; see repos_extra.example.json
 dex/
   config.py            settings, paths, logging (BOT_DATA_DIR relocates all runtime data)
@@ -24,6 +25,7 @@ dex/
   state.py             shared runtime state: jobs, threads, procs, claims, dedupe
   progress.py          live-step tracking and status text
   claude_runner.py     streaming `claude -p` runner with timeout and stop
+  claude_env.py        which Claude account (Azure Foundry or a subscription) each kind of run uses, and its environment
   router.py            LLM intent router
   policy.py            roles, switches (pause/disable), caps, usage and token tracking, audit log
   runtime.py           live snapshot (runtime.json) for dexctl and the dashboard
@@ -50,6 +52,29 @@ legacy/                the previous single-file bot, kept for reference
 3. `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`; `gh auth status` and `claude` must work.
 4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Code changes load only on a restart (tmux does not reload code or restart a crashed bot). **Do not restart while a review runs: it kills it** (check `pgrep -fl 'claude.* -p'` first). A killed review leaves nothing posted; send the link again with `force`.
 5. The review skills are installed from GitHub `main` (`install.sh all` from `praveen-degreed/review-skills`, which holds both the FE and the BE skill), not from local files: a skill change takes effect only after it is merged and reinstalled. Each review reads the installed skill fresh, so no Dex restart is needed for that.
+
+## Switching the Claude account (Azure Foundry <-> a Claude subscription)
+Every `claude` run (reviews, Slack answers, the router) uses the account in the environment Dex was started with: today Azure
+Foundry. You can send any kind of run to a personal Claude subscription instead, and back, **without a restart**:
+```
+bin/dexctl claude show                       which account each kind of run uses
+bin/dexctl claude check subscription         is that account usable (runs `claude auth status` with its environment)
+bin/dexctl claude use review subscription    reviews on the subscription; question / router / all work too
+bin/dexctl claude use all foundry            everything back on Azure Foundry (the default)
+```
+**One-time setup for the subscription profile** (Dex never logs in for you):
+1. `! CLAUDE_CONFIG_DIR=~/.claude-subscription claude` then `/login` with the personal account (the default folder; change it in `claude_profiles.json`).
+2. Install the review skills into that folder too: `CLAUDE_HOME=~/.claude-subscription ./install.sh all` (from the review-skills repo).
+3. `bin/dexctl claude check subscription` should say `loggedIn=True`.
+
+How it works: the `subscription` profile starts `claude` with its own `CLAUDE_CONFIG_DIR` and **without** the Foundry, cloud-provider
+and API-key variables, so Claude Code uses its normal login. A personal API key works too (a profile with `set_from_env`: the key
+stays in your environment, never in a file; see `claude_profiles.example.json`). The choice is stored in `policy.json`
+(`claude_profile`). A run set to a profile that is missing, not logged in or incomplete **fails with a clear message and never
+falls back** to the other account. The audit log records the profile of every review.
+Caveats: `--bare` skips the login, so on the subscription the router and answers run without it (more startup tokens each);
+a subscription has usage limits that Foundry does not; **running private company code through a personal account may break
+company policy: check before you switch.**
 
 ## Seeing and controlling spend (`dexctl` and the dashboard)
 ```
@@ -91,7 +116,7 @@ With no `policy.json`, **everyone may do everything, unlimited**; usage is still
 
 ## Tests
 ```
-.venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py && .venv/bin/python tests/test_botq_code.py && .venv/bin/python tests/test_ctl.py
+.venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_claude_env.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py && .venv/bin/python tests/test_botq_code.py && .venv/bin/python tests/test_ctl.py
 .venv/bin/python tests/eval_router.py     # real model calls (~$0.05)
 tests/check_permissions.py   # real model calls (~$0.9): every skill script and read command is allowed, merge/push/rm/inline-body are not.
                              # Run it after editing dex/tools.py or updating a review skill.

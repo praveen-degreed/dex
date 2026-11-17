@@ -7,7 +7,7 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import config, people, qa, services, state
+from . import claude_env, config, people, qa, services, state
 from . import slack_utils as su
 from .claude_runner import BudgetExceeded, Stopped, run_claude
 
@@ -72,7 +72,8 @@ def answer_question(channel, thread_ts, msg_ts, user, text, header):
             for attempt in (1, 2):
                 prompt = (header + text) if (header and not sid) else text
                 try:
-                    result = run_claude(qa.build_command(prompt, sid, max_usd), config.QA_DIR, os.environ.copy(), raw, err,
+                    result = run_claude(claude_env.adapt_command(services.policy, "question", qa.build_command(prompt, sid, max_usd)),
+                                        config.QA_DIR, claude_env.env_for(services.policy, "question"), raw, err,
                                         key=qkey, timeout=config.QA_TIMEOUT_S, stop_key=k, label="answer")
                     break
                 except RuntimeError as e:

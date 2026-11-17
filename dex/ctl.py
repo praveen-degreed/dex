@@ -10,6 +10,9 @@
     dexctl cap daily-usd <amount|off>      the whole bot's spend per day
     dexctl cap user-usd <role> <amount|off>
     dexctl cap pr-files <n|off>            refuse reviews of PRs with more changed files
+    dexctl claude show                     which Claude account each kind of run uses (foundry | subscription | your own profile)
+    dexctl claude check <profile>          is that profile usable: runs `claude auth status` with its environment
+    dexctl claude use <review|question|router|all> <profile>   switch (back to foundry with `foundry`); takes effect on the next run
     dexctl serve [--port 8787]             a read-only dashboard on http://127.0.0.1:<port>
 
 It reads the files Dex writes (runtime.json, usage.json, audit.jsonl, policy.json) and edits only policy.json, which
@@ -22,7 +25,7 @@ import json
 import sys
 import time
 
-from . import config
+from . import claude_env, config
 from .policy import ALL, COUNTED, edit_file, human
 
 POLICY = config.DATA / "policy.json"
@@ -141,6 +144,7 @@ def cmd_show(a):
     cfg = load_json(POLICY, {})
     print(f"paused: {bool(cfg.get('paused'))}\ndisabled: {', '.join(cfg.get('disabled') or []) or 'none'}")
     print(f"caps: {caps_line({'max_job_usd': cfg.get('max_job_usd'), 'max_pr_files': cfg.get('max_pr_files'), 'global': cfg.get('global')})}")
+    print(_profiles_text(cfg).splitlines()[0])
     print(f"policy file: {POLICY}" + ("" if POLICY.exists() else " (does not exist: everything allowed, unlimited)"))
     return 0
 
@@ -203,6 +207,74 @@ def cmd_change(a):
     return cmd_show(a)
 
 
+def _profiles_text(pol):
+    use = {k: _c_profile(pol, k) for k in claude_env.KINDS}
+    return ("Claude account per kind of run: " + ", ".join(f"{k}={v}" for k, v in use.items())
+            + "\nKnown profiles: " + ", ".join(sorted(claude_env.profiles())))
+
+
+def _c_profile(cfg, kind):
+    v = cfg.get("claude_profile")
+    if isinstance(v, dict):
+        v = v.get(kind) or v.get("all")
+    return v if isinstance(v, str) and v else claude_env.FOUNDRY
+
+
+def cmd_claude(a):
+    import subprocess
+
+    cfg = load_json(POLICY, {})
+    known = claude_env.profiles()
+    if a.what == "show":
+        print(_profiles_text(cfg))
+        return 0
+    if a.what == "check":
+        if a.profile not in known:
+            raise ValueError(f"unknown profile {a.profile!r}; known: {', '.join(sorted(known))}")
+        shim = type("P", (), {"claude_profile": lambda self, kind, _n=a.profile: _n})()
+        try:
+            env = claude_env.env_for(shim, "review")
+        except claude_env.ClaudeProfileError as e:
+            print(f"not usable: {e}")
+            return 1
+        r = subprocess.run(["claude", "auth", "status"], env=env, capture_output=True, text=True, timeout=60)
+        try:
+            st = json.loads(r.stdout)
+            print(f"{a.profile}: loggedIn={st.get('loggedIn')} provider={st.get('apiProvider')} auth={st.get('authMethod')} config={st.get('configDirectory')}")
+            return 0 if st.get("loggedIn") else 1
+        except ValueError:
+            print(f"{a.profile}: could not read `claude auth status`: {(r.stdout or r.stderr)[:160]}")
+            return 1
+    if a.profile not in known:
+        raise ValueError(f"unknown profile {a.profile!r}; known: {', '.join(sorted(known))}")
+    if a.target != "all" and a.target not in claude_env.KINDS:
+        raise ValueError(f"unknown kind {a.target!r}; use one of {', '.join(claude_env.KINDS)} or all")
+    kinds = list(claude_env.KINDS) if a.target == "all" else [a.target]
+
+    def mutate(c):
+        cur = c.get("claude_profile")
+        cur = dict(cur) if isinstance(cur, dict) else ({"all": cur} if isinstance(cur, str) and cur else {})
+        if "all" in cur:  # expand an old blanket setting so one kind can change on its own
+            blanket = cur.pop("all")
+            for k in claude_env.KINDS:
+                cur.setdefault(k, blanket)
+        for k in kinds:
+            if a.profile == claude_env.FOUNDRY:
+                cur.pop(k, None)
+            else:
+                cur[k] = a.profile
+        if cur:
+            c["claude_profile"] = cur
+        else:
+            c.pop("claude_profile", None)
+    edit_file(POLICY, mutate)
+    print(_profiles_text(load_json(POLICY, {})))
+    if a.profile != claude_env.FOUNDRY:
+        print("Reminder: this sends the code under review to that account. Check `dexctl claude check "
+              f"{a.profile}` first, and company policy.")
+    return 0
+
+
 def cmd_serve(a):
     from . import dashboard
     dashboard.serve(a.port)
@@ -222,13 +294,16 @@ def build_parser():
     d = cs.add_parser("daily-usd"); d.add_argument("target")
     r = cs.add_parser("user-usd"); r.add_argument("target"); r.add_argument("value")
     p = cs.add_parser("pr-files"); p.add_argument("target")
+    cl = sub.add_parser("claude"); cls = cl.add_subparsers(dest="what", required=True)
+    cls.add_parser("show"); cls.add_parser("check").add_argument("profile")
+    cu = cls.add_parser("use"); cu.add_argument("target"); cu.add_argument("profile")
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8787)
     return ap
 
 
 def main(argv=None):
     a = build_parser().parse_args(argv)
-    handlers = {"status": cmd_status, "usage": cmd_usage, "top": cmd_top, "show": cmd_show, "serve": cmd_serve}
+    handlers = {"status": cmd_status, "usage": cmd_usage, "top": cmd_top, "show": cmd_show, "serve": cmd_serve, "claude": cmd_claude}
     try:
         return handlers[a.cmd](a) if a.cmd in handlers else cmd_change(a)
     except ValueError as e:

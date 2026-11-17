@@ -89,6 +89,14 @@ class Policy:
         except (TypeError, ValueError):
             return None
 
+    def claude_profile(self, kind):
+        """Which Claude profile (see claude_env) a kind of run uses: policy.json `claude_profile`, a name for all kinds
+        or {"review": "subscription", "all": "foundry"}; default foundry (the environment Dex was started with)."""
+        v = self.cfg.get("claude_profile")
+        if isinstance(v, dict):
+            v = v.get(kind) or v.get("all")
+        return v if isinstance(v, str) and v else "foundry"
+
     def max_pr_files(self):
         try:
             return int(self.cfg.get("max_pr_files")) or None
@@ -221,6 +229,7 @@ class Policy:
                     "tokens": dict(self.usage.get("tokens") or {}), "router_calls": self.usage["router_calls"],
                     "paused": bool(self.cfg.get("paused")), "disabled": sorted(set(self.cfg.get("disabled") or [])),
                     "max_job_usd": self.cfg.get("max_job_usd"), "max_pr_files": self.cfg.get("max_pr_files"),
+                    "claude_profile": self.cfg.get("claude_profile"),
                     "global": dict(self.cfg.get("global") or {})}
 
     def summary(self, user, everyone=False):

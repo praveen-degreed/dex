@@ -1,0 +1,9 @@
+{
+  "subscription": {
+    "config_dir": "~/.claude-subscription"
+  },
+  "my-api-key": {
+    "unset": ["CLAUDE_CODE_USE_FOUNDRY", "ANTHROPIC_FOUNDRY_*", "ANTHROPIC_DEFAULT_*"],
+    "set_from_env": {"ANTHROPIC_API_KEY": "MY_PERSONAL_ANTHROPIC_KEY"}
+  }
+}

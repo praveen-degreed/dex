@@ -4,6 +4,7 @@
 people.json
 policy.json
 readonly_repos.json
+claude_profiles.json
 repos_extra.json
 commands.json
 

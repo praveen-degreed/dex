@@ -12,7 +12,7 @@ import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import config, github, progress, services, state
+from . import claude_env, config, github, progress, services, state
 from . import slack_utils as su
 from .claude_runner import BudgetExceeded, Stopped, run_claude
 from .tools import review_tools
@@ -145,12 +145,13 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         subprocess.run(["git", "-C", clone, "fetch", "origin", f"pull/{number}/head"], check=True, capture_output=True)
         remove_worktree(clone, wt)  # a run that was killed leaves its folder behind; start from a clean one
         subprocess.run(["git", "-C", clone, "worktree", "add", "--detach", str(wt), sha], check=True, capture_output=True)
+        env = claude_env.env_for(services.policy, "review", {"TMPDIR": f"{tmp}/"})  # trailing slash: fetch-pr.sh concatenates names onto it
         result = run_claude(
             ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp),
              "--output-format", "stream-json", "--verbose",
              "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied]
             + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else []),
-            wt, {**os.environ, "TMPDIR": f"{tmp}/"},  # trailing slash: fetch-pr.sh concatenates names onto it
+            wt, env,
             raw, err, key=key, stop_key=(channel, thread_ts),
         )
         cost = result.get("total_cost_usd") or 0.0
@@ -196,7 +197,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             raw.unlink(missing_ok=True)  # keep the raw event log when the run failed, was denied something, posted nothing or
             # was comment-only (the skill downgrades when a reviewer did not finish: the log shows why)
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, sha=sha[:7],
-                              decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials), agents=agents, tokens=job_tokens(key))
+                              decision="done", outcome=outcome, usd=round(cost, 4), denials=len(denials), agents=agents, profile=claude_env.profile_name(services.policy, "review"), tokens=job_tokens(key))
     except BudgetExceeded as e:
         cost = e.cost
         state.release(key)

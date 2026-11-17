@@ -1,5 +1,5 @@
 import _env  # noqa: F401  (must come first)
-import json, re, tempfile, time, unittest
+import json, os, re, tempfile, time, unittest
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
@@ -31,7 +31,7 @@ class Base(unittest.TestCase):
         self.addCleanup(lambda: None)
         services.policy = Policy(self.tmp, OWNER); services.sessions = qa.SessionStore(self.tmp / "s.json")
         self.verdict, self.router_calls, self.info = None, [], {"parent_text": "", "last_bot": None}
-        def classify(text, ctx): self.router_calls.append((text, ctx)); return self.verdict
+        def classify(text, ctx, **kw): self.router_calls.append((text, ctx)); return self.verdict
         for target, new in (("dex.router.classify", classify), ("dex.slack_utils.thread_info", lambda c, r: self.info),
                             ("dex.reviews.start_review", mock.Mock()), ("dex.conversation.start_question", mock.Mock())):
             p = mock.patch(target, new); p.start(); self.addCleanup(p.stop)
@@ -260,6 +260,18 @@ class RunReview(Base):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Agent"), self.event("Agent"), self.event("Agent", parent="x")]); self.go()
         self.assertFalse(any("no review agents" in t.lower() for t in self.slack.texts())); self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [])
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["agents"], 2, "only the orchestrator's launches count, not a sub-agent's own calls")
+    def test_the_review_runs_on_the_claude_profile_set_in_policy(self):
+        import tempfile
+        cfgdir = tempfile.mkdtemp(); (config.DATA / "claude_profiles.json").write_text(json.dumps({"subscription": {"config_dir": cfgdir}})); self.addCleanup((config.DATA / "claude_profiles.json").unlink)
+        self.posted.return_value = ("APPROVED", "L")
+        with mock.patch.dict(os.environ, {"CLAUDE_CODE_USE_FOUNDRY": "1", "ANTHROPIC_FOUNDRY_RESOURCE": "r"}):
+            self.go(); self.assertEqual(self.captured["env"]["CLAUDE_CODE_USE_FOUNDRY"], "1", "default: the environment as started")
+            self.set_policy({"claude_profile": {"review": "subscription"}}); self.captured.clear(); state.seen.add(self.key); self.go()
+        env = self.captured["env"]; self.assertNotIn("CLAUDE_CODE_USE_FOUNDRY", env); self.assertNotIn("ANTHROPIC_FOUNDRY_RESOURCE", env); self.assertEqual(env["CLAUDE_CONFIG_DIR"], cfgdir); self.assertTrue(env["TMPDIR"].endswith("/"))
+        self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["profile"], "subscription")
+    def test_a_review_set_to_a_profile_that_is_not_usable_fails_and_never_uses_the_other_account(self):
+        self.set_policy({"claude_profile": {"review": "typo"}}); self.go()
+        self.assertEqual(state.jobs[self.key]["status"], "failed"); self.assertNotIn("args", self.captured, "claude was not started"); self.assertTrue(any("typo" in t for t in self.slack.texts()))
     def test_no_posted_review_warns(self):
         self.posted.return_value = None; self.go(); self.assertIn("could not find a posted review", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[-1]["name"], "warning")
     def test_fork_is_draft_only(self):

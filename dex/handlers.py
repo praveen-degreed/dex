@@ -130,7 +130,7 @@ def handle(event):
     info = su.thread_info(channel, root) if root else {"parent_text": "", "last_bot": None}
     verdict, via = None, "router"
     if services.policy.router_call_allowed():
-        verdict = router.classify(text, build_context(text, mentions_bot, mentions_owner, review_key, session, info))
+        verdict = router.classify(text, build_context(text, mentions_bot, mentions_owner, review_key, session, info), policy=services.policy)
     if verdict is None:
         verdict, via = fallback_verdict(text, mentions_bot or mentions_owner, tracked), "rules"
     else:

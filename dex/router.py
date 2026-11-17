@@ -12,6 +12,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from . import claude_env
+
 log = logging.getLogger("dex.router")
 
 INTENTS = ["review", "status", "stop", "usage", "control", "agent", "ignore"]
@@ -73,14 +75,17 @@ def _cwd():
     return d
 
 
-def classify(text, ctx, timeout=40):
+def classify(text, ctx, timeout=40, policy=None):
     """Return a validated verdict dict, or None if the router failed (caller falls back to rules)."""
     prompt = f"Context (JSON): {json.dumps(ctx)}\n\n<message>\n{text[:2000]}\n</message>"
     cmd = ["claude", "-p", prompt, "--bare", "--model", "haiku", "--tools", "",
            "--output-format", "json", "--json-schema", json.dumps(SCHEMA),
            "--system-prompt", SYSTEM.replace("{name}", os.environ.get("BOT_NAME", "Dex"))]
     try:
-        p = subprocess.run(cmd, cwd=_cwd(), capture_output=True, text=True, timeout=timeout)
+        env = None
+        if policy is not None:  # the Claude profile (account) the router runs on
+            cmd, env = claude_env.adapt_command(policy, "router", cmd), claude_env.env_for(policy, "router")
+        p = subprocess.run(cmd, cwd=_cwd(), capture_output=True, text=True, timeout=timeout, env=env)
         envelope = json.loads(p.stdout)
         raw = envelope.get("structured_output")
         if raw is None:
