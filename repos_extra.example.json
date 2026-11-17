@@ -6,9 +6,7 @@
   },
   "degreed/some-dotnet-repo": {
     "clone": "/path/to/repo",
-    "skill": "/dg-pr-review {number} --analysis-only",
-    "maestro_skill": "/dg-maestro-review {number}",
-    "maestro_paths": "maestro|aicoach",
+    "skill": "/review-prs-net {url}",
     "dex_posts": true,
     "default_branch": "main"
   }

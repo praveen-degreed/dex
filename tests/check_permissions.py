@@ -14,7 +14,7 @@ allowed, denied = review_tools(str(work / "tmp"), True)  # post=True: the skill 
 
 OK, NO = "allowed", "denied"
 cases = []
-for skill in ("review-prs", "review-prs-be"):
+for skill in ("review-prs", "review-prs-be", "review-prs-net"):
     for script in sorted((_SKILLS / skill / "scripts").glob("*.sh")):
         cases.append((f"script {skill}/{script.name}", f"{script} --help", OK))
 cases += [

@@ -54,11 +54,11 @@ legacy/                the previous single-file bot, kept for reference
 5. The review skills are installed from GitHub `main` (`install.sh all` from `praveen-degreed/review-skills`, which holds both the FE and the BE skill), not from local files: a skill change takes effect only after it is merged and reinstalled. Each review reads the installed skill fresh, so no Dex restart is needed for that.
 
 ## Reviewing the .NET monolith (`degreed/Degreed`)
-Its review skills live in the repo (`/dg-pr-review`, `/dg-maestro-review`) and only draft: they never post. A repo entry (in
-`repos_extra.json`) with `"dex_posts": true` makes Dex run the skill read-only on a worktree of the PR and then **post the draft
-itself as one comment-only review** (never approve or request changes; a human decides). With `"maestro_skill"` set, a PR whose
-changed paths match `maestro_paths` (default `maestro|aicoach`, case-insensitive) is reviewed with `/dg-maestro-review`, any other PR
-with `/dg-pr-review ... --analysis-only`. A skill string may carry `{number}` / `{url}`. A PR that changes anything under `.claude/`
+Dex runs one main skill for it, `/review-prs-net` (from the review-skills repo), which routes to the team's own skills in the repo:
+`/dg-maestro-review` when a changed path matches `maestro|aicoach`, otherwise `/dg-pr-review --analysis-only`. Those skills only draft;
+a repo entry (in `repos_extra.json`) with `"dex_posts": true` makes Dex run the skill read-only on a worktree of the PR and then **post
+the draft itself as one comment-only review** (never approve or request changes; a human decides). A skill string may carry
+`{number}` / `{url}`; the older `"maestro_skill"` / `"maestro_paths"` keys (routing done by Dex itself) still work for repos without such a skill. A PR that changes anything under `.claude/`
 is refused (the skills come from the PR itself, so it could rewrite its own reviewer); the owner can force it. See `repos_extra.example.json`.
 Not benchmarked yet: the first real run of each skill is the test. The monolith is large (about 35,000 files), so a review worktree takes a while to create.
 

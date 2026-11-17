@@ -15,7 +15,7 @@ REVIEW_READ = [
     "Bash(git diff:*)", "Bash(git log:*)", "Bash(git show:*)", "Bash(git blame:*)",
     "Bash(git grep:*)", "Bash(git ls-files:*)", "Bash(git status:*)",
     # `/*`, not `/:*`: the `:*` form needs a space after the prefix, so it never matched `.../scripts/name.sh` (verified).
-    f"Bash({_SKILLS}/review-prs/scripts/*)", f"Bash({_SKILLS}/review-prs-be/scripts/*)",
+    f"Bash({_SKILLS}/review-prs/scripts/*)", f"Bash({_SKILLS}/review-prs-be/scripts/*)", f"Bash({_SKILLS}/review-prs-net/scripts/*)",
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
     # Read-only helpers the skills chain with the commands above (`cd x && script`, `ls | head`). A chained call is allowed
     # only when every part matches a rule, and paths must stay inside the run's directory (verified: tests/check_permissions.py).
