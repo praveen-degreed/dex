@@ -364,7 +364,20 @@ class RunReview(Base):
         self.go(fork=True); a = self.captured["args"]; self.assertNotIn("gh pr review", a[a.index("--allowedTools") + 1]); self.assertIn("not posted (PR is from a fork)", self.slack.texts()[0]); self.assertIn("review text", self.slack.texts()[0]); self.posted.assert_not_called()
     def test_denials_dm_owner(self):
         self.result = {**self.result, "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "D=x; cat > f"}}]}; self.posted.return_value = ("APPROVED", "L"); self.go()
-        dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("denied", dm[0]["text"]); self.assertIn("cat > f", dm[0]["text"])
+        dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("risky", dm[0]["text"]); self.assertIn("cat > f", dm[0]["text"])
+    def test_harmless_denials_are_counted_and_logged_but_do_not_ping_the_owner(self):
+        (config.DATA / "denials.jsonl").unlink(missing_ok=True)
+        self.result = {**self.result, "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "ls /x/y"}}, {"tool_name": "WebFetch", "tool_input": {"url": "https://example.com"}},
+                                                             {"tool_name": "Bash", "tool_input": {"command": "git -C /x checkout main"}}]}
+        self.posted.return_value = ("APPROVED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 1, "cache_read": 1, "output": 1}; self.go()
+        dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("1 risky", dm[0]["text"]); self.assertIn("of 3 blocked", dm[0]["text"]); self.assertNotIn("ls /x/y", dm[0]["text"])
+        self.assertIn("3 tool calls blocked by safety rules", self.slack.texts()[-1])
+        logged = [json.loads(l) for l in (config.DATA / "denials.jsonl").read_text().splitlines()]; self.assertEqual([r["tool"] for r in logged], ["Bash", "WebFetch", "Bash"])
+    def test_only_harmless_denials_send_no_dm_at_all(self):
+        self.result = {**self.result, "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "ls /x/y"}}, {"tool_name": "Bash", "tool_input": {"command": "sed -n 1,5p f"}}]}
+        self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [])
+    def test_the_run_may_read_its_own_temp_dir(self):
+        self.go(); a = self.captured["args"]; self.assertEqual(a[a.index("--add-dir") + 1], str(config.TMPS / f"degreed_fe-workspace-4626-{'a' * 7}"))
     def test_failure_stop_and_cancel(self):
         self.result = RuntimeError("boom"); self.go(); self.assertIn("failed", self.slack.texts()[0]); self.assertNotIn(self.key, state.seen); self.assertEqual(state.jobs[self.key]["status"], "failed"); self.assertEqual(self.slack.reacts[-1]["name"], "x")
         self.slack.posts.clear(); state.seen.add(self.key); self.result = Stopped(); self.go(); self.assertIn("Stopped the review", self.slack.texts()[0]); self.assertEqual(state.jobs[self.key]["status"], "stopped"); self.assertNotIn(self.key, state.seen)

@@ -42,6 +42,39 @@ def describe(ev):
     return None
 
 
+LOG_KEEP = 60  # tool calls kept per job for the dashboard
+
+
+def _short(text, n=140):
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= n else text[:n - 1] + "…"
+
+
+def calls(ev):
+    """The tool calls in an assistant event, as (id, tool, detail, from_main_session) for the dashboard's live log."""
+    if ev.get("type") != "assistant":
+        return []
+    msg = ev.get("message")
+    out = []
+    for b in (msg.get("content") if isinstance(msg, dict) else None) or []:
+        if not isinstance(b, dict) or b.get("type") != "tool_use":
+            continue
+        name, inp = b.get("name") or "?", b.get("input") or {}
+        detail = (inp.get("command") or inp.get("file_path") or inp.get("pattern") or inp.get("description")
+                  or inp.get("subagent_type") or inp.get("skill") or "")
+        out.append((b.get("id"), name, _short(detail), ev.get("parent_tool_use_id") is None))
+    return out
+
+
+def results(ev):
+    """tool_use ids answered in a user event (a finished tool call, including a finished review agent)."""
+    if ev.get("type") != "user":
+        return []
+    msg = ev.get("message")
+    return [b.get("tool_use_id") for b in (msg.get("content") if isinstance(msg, dict) else None) or []
+            if isinstance(b, dict) and b.get("type") == "tool_result"]
+
+
 def track(key, line):
     """Parse one stream line; if `key` names a job, update its progress. Returns the event, or None if not JSON."""
     try:
@@ -57,6 +90,17 @@ def track(key, line):
                 if what:
                     job["activity"] = what
                     job["steps"] += 1
+                now = time.time()
+                log, agents = job.setdefault("log", []), job.setdefault("agents", [])
+                for cid, name, detail, main in calls(ev):
+                    log.append({"t": now, "tool": name, "detail": detail, "main": main})
+                    if main and name in ("Agent", "Task"):
+                        agents.append({"id": cid, "name": detail or "agent", "status": "running", "started": now})
+                del log[:-LOG_KEEP]
+                for rid in results(ev):
+                    for a in agents:
+                        if a["id"] == rid and a["status"] == "running":
+                            a.update(status="done", finished=now)
         msg = ev.get("message") if ev.get("type") == "assistant" else None
         u = msg.get("usage") if isinstance(msg, dict) else None
         if u and msg.get("id"):  # outside the lock: add_usage takes it

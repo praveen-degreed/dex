@@ -7,7 +7,7 @@ import time
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from . import config, handlers, qa, runtime, services, state
+from . import config, control, handlers, qa, runtime, services, state
 from . import slack_utils as su
 
 log = logging.getLogger("dex")
@@ -34,5 +34,6 @@ def main():
     threading.Thread(target=housekeeping, daemon=True).start()
     threading.Thread(target=runtime.write_loop, daemon=True, name="runtime-snapshot").start()  # for dexctl and the dashboard
     threading.Thread(target=qa.refresh_loop, daemon=True, name="git-fetch").start()  # keeps origin/main fresh in the existing clones
+    threading.Thread(target=control.loop, daemon=True, name="control").start()  # stop / run / restart from the dashboard
     print("dex listening (reviews, questions, status, stop, usage)")
     SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"]).start()

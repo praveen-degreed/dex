@@ -30,7 +30,8 @@ dex/
   policy.py            roles, switches (pause/disable), caps, usage and token tracking, audit log
   runtime.py           live snapshot (runtime.json) for dexctl and the dashboard
   ctl.py               the dexctl command
-  dashboard.py         the read-only local dashboard
+  dashboard.py         the local Dex page (dashboard.html): status, controls, settings
+  control.py           the bot's inbox for the page's stop / run / restart commands
   qa.py                thread-session store, read-only checkouts, the assistant's prompt
   people.py            Slack id -> name + GitHub login (people.json)
   tools_cli.py         the assistant's read-only helper: `bin/botq activity|prs <login>`, `find <keywords>` (org-wide PR search)
@@ -103,7 +104,7 @@ bin/dexctl disable review          switch a capability off for everyone (enable 
 bin/dexctl cap job-usd review 4    stop any single review that spends more than $4 (soft cap, see below)
 bin/dexctl cap daily-usd 10        the whole bot's spend per day
 bin/dexctl cap pr-files 80         refuse reviews of PRs with more than 80 changed files (the owner can force)
-bin/dexctl serve [--port 8787]     a read-only dashboard at http://127.0.0.1:8787
+bin/dexctl serve [--port 8787]     the Dex page at http://127.0.0.1:8787 (see below)
 ```
 Everything is unlimited by default. The commands edit `policy.json` (atomically) and Dex picks the change up on its next
 message, with no restart. In Slack the owner can say `@Dex pause` / `@Dex resume` / `@Dex what is switched off?`; anyone
@@ -112,8 +113,25 @@ person and in `audit.jsonl`.
 
 *Per-job caps use the Claude CLI's `--max-budget-usd`, which is checked between model turns: a job can overshoot a cap by
 up to one turn (a large review turn is about $0.05-0.20). A job that hits its cap is stopped, nothing is posted, and the
-asker and the owner are told.* The dashboard runs as its own process, binds to 127.0.0.1 only, answers GET only, rejects
-any other `Host` header (so a web page cannot reach it), and changes nothing.
+asker and the owner are told.*
+
+### The Dex page (`bin/dexctl serve`)
+One page with three views: **Overview** (paste a PR link to preview and run a review; spend, reviews, questions and
+tokens today; live jobs with their steps, current tool call and review agents; recent jobs with Rerun; an activity
+feed), **Jobs** (every job since Dex started, with its tool calls, agents and timeline) and **Settings** (switch reviews
+or questions off, pick the Claude account per kind of run, set the limits; changes are staged and applied together).
+Stop, Cancel and Restart wait 5 seconds with an Undo. Restart waits until nothing is running, then restarts Dex in place
+(same process id, so tmux and caffeinate keep it).
+
+How it is safe: the page is its own process, binds to 127.0.0.1 only and rejects any other `Host` header (no DNS
+rebinding). Reading needs nothing more; every change also needs the page's own `Origin` and a per-process token sent in a
+custom header, so another web page cannot make one. Settings go through the same code as `dexctl` (same validation) into
+`policy.json`. Stop, run and restart are files dropped in `control/inbox/` that the bot picks up within a second
+(`dex/control.py`); one older than a minute is dropped, never acted on late. Every change is in `audit.jsonl` with
+`"source": "page"`. Reviews started from the page are announced in a Slack message (to the owner's DM, or
+`DEX_PAGE_CHANNEL`) and run in that thread like any other. Stop, Run and Restart need the bot restarted once with this
+version; the page says so until then. Live cost is not known until a run ends (Claude reports it at the end), so a running
+job shows tokens and its cap.
 
 ## What the assistant can see
 Read-only checkouts of `main` for every repo in `REPOS` (reviewable) and `readonly_repos.json` (read-only), built as `git worktree`s of your clones under `qa/` (they share git history; your working copies, branches and uncommitted work are never read). A background thread creates and refreshes them every 10 minutes, all repos in parallel, so a huge first checkout never blocks an answer; a repo that is not ready yet is listed to the assistant as such. GitHub questions ("is anyone working on X") search the whole `GITHUB_ORG` (default `degreed`) with `bin/botq find`, and every answer states where it looked.
@@ -126,7 +144,7 @@ With no `policy.json`, **everyone may do everything, unlimited**; usage is still
 
 ## Safety
 - Reviews run in a throwaway worktree with a private temp dir; the only write access is that temp dir. `gh pr merge`, `git push`, `git commit` and any `../` path are denied. A review never runs the PR's own code (no `pytest`, `ruff`): test results come from CI.
-- The review allowlist (`dex/tools.py`) is strict on purpose: the skills' scripts are allowed as `.../scripts/*` (the `:*` form never matched), a chained command is allowed only if every part is allowed, shell variables are denied, and the review is posted with `--body-file` (an inline multi-line body with a `#` line is denied). Denied calls are counted per review and DM'd to the owner. Raw event logs of reviews that were denied something, failed, or were comment-only are kept in `drafts/` to see why.
+- The review allowlist (`dex/tools.py`) is strict on purpose: the skills' scripts are allowed as `.../scripts/*` (the `:*` form never matched), a chained command is allowed only if every part is allowed, shell variables are denied, and the review is posted with `--body-file` (an inline multi-line body with a `#` line is denied). Denied calls are counted in the review's usage line and all logged to `denials.jsonl` (to adjust the allowlist in one batch); only the risky ones (anything that writes, publishes, runs PR code or reaches out) DM the owner. A run may read and list its own private temp dir (`--add-dir`), where the fetch dir lives; sibling repos and `..` stay out of reach on purpose. Raw event logs of reviews that were denied something, failed, or were comment-only are kept in `drafts/` to see why.
 - Review prompts and skills are untrusted-input aware: PR text is data, never instructions. Full permission bypass is not used.
 - The assistant is read-only: it reads only the repo checkouts (not the bot's `.env`), runs git only as `git -C <checkout> <read-only subcommand>`, and uses GitHub only for PR and search lookups. Edit, push, commit and merge are denied.
 - Slack messages, PR text, logs and code are treated as untrusted data by every prompt.

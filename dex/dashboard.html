@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dex</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="dex-token" content="__DEX_TOKEN__">
+<style>
+:root{--bg:#09090B;--side:#0C0C0F;--card:#111114;--card2:#17171B;--line:#1F1F25;--line2:#2A2A31;--fg:#EDEDF0;--mut:#9C9CA7;--dim:#8A8A95;--faint:#6E6E78;
+--acc:#C6F432;--accText:#D4F56A;--accBg:#1B2410;--ok:#34D399;--okText:#6EE7B7;--okBg:#13241C;--warn:#FBBF24;--warnText:#FCD34D;--warnBg:#2A2210;--bad:#F87171;--badText:#FCA5A5;--badBg:#2A1416;--info:#60A5FA;--infoText:#93C5FD;--infoBg:#121C2B;
+--sans:"Geist","Inter",-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;--mono:"Geist Mono","SF Mono",ui-monospace,Menlo,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);-webkit-font-smoothing:antialiased}
+a{color:var(--accText);text-decoration:none}a:hover{color:#E6FA9E}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.mono{font-family:var(--mono)}.mut{color:var(--mut)}.dim{color:var(--dim)}.small{font-size:12px}
+[hidden]{display:none!important}
+.app{display:flex;min-height:100vh;flex-wrap:wrap}
+.side{flex:0 0 232px;background:var(--side);border-right:1px solid #1C1C22;padding:18px 14px;display:flex;flex-direction:column;gap:18px}
+.brand{display:flex;align-items:center;gap:10px;padding:0 6px}.logo{width:30px;height:30px;border-radius:9px;background:var(--acc);color:#0A0A0A;font-weight:700;display:flex;align-items:center;justify-content:center}
+.nav{display:flex;flex-direction:column;gap:2px}.nav a{display:flex;align-items:center;gap:10px;min-height:38px;padding:0 10px;border-radius:8px;color:var(--mut)}
+.nav a.on{background:#18181D;color:var(--fg);font-weight:500}.nav a:hover{color:var(--fg)}.nav svg{flex:0 0 auto}
+.badge{margin-left:auto;font-size:11px;font-weight:600;padding:1px 7px;border-radius:99px;background:var(--acc);color:#0A0A0A}
+.health{margin-top:auto;border:1px solid var(--line);border-radius:12px;background:var(--card);padding:12px;display:flex;flex-direction:column;gap:6px;font-size:12px}
+.health .row{display:flex;justify-content:space-between;color:var(--mut)}.health .row span:last-child{color:var(--fg)}
+.main{flex:1 1 640px;min-width:0;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;gap:12px;padding:14px 32px;border-bottom:1px solid #1C1C22;position:sticky;top:0;background:rgba(9,9,11,.92);backdrop-filter:blur(8px);z-index:5}
+.top h1{margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em}.top .acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.pill{display:inline-flex;align-items:center;gap:7px;padding:4px 10px;border-radius:99px;font-size:12px;font-weight:600}
+.dot{width:7px;height:7px;border-radius:99px;flex:0 0 auto}
+@keyframes pulse{0%{box-shadow:0 0 0 0 currentColor}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+.live{animation:pulse 1.8s infinite}
+@media (prefers-reduced-motion:reduce){.live,.shimmer{animation:none!important}}
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:38px;padding:0 14px;border-radius:10px;border:1px solid var(--line2);background:var(--card);font-weight:500}
+.btn:hover{border-color:#3A3A43}.btn.sm{min-height:32px;padding:0 10px;font-size:12px;border-radius:8px}.btn.ghost{background:transparent}
+.btn.primary{background:var(--acc);border-color:var(--acc);color:#0A0A0A;font-weight:600}.btn.primary:hover{background:#D4F56A}
+.btn.danger{border-color:#4A2326;background:#1E1214;color:var(--badText)}.btn:disabled{opacity:.45;cursor:not-allowed}
+.chip{min-height:34px;padding:0 12px;border-radius:99px;border:1px solid var(--line2);background:transparent;color:var(--mut);font-size:13px}
+.chip[aria-pressed="true"]{border-color:var(--acc);background:var(--accBg);color:var(--accText)}
+kbd{font-family:var(--mono);font-size:11px;padding:2px 6px;border-radius:5px;border:1px solid var(--line2);color:var(--mut)}
+.wrap{padding:24px 32px 64px;display:flex;flex-direction:column;gap:20px;max-width:1180px;width:100%}
+.banner{border-radius:12px;padding:12px 16px;font-size:13px;border:1px solid}
+.banner.warn{background:var(--warnBg);border-color:#4A3B12;color:var(--warnText)}.banner.bad{background:var(--badBg);border-color:#4A2326;color:var(--badText)}
+.card{border-radius:14px;border:1px solid var(--line);background:var(--card)}
+.cmd{border-radius:16px;border:1px solid var(--line2);background:var(--card);padding:6px}
+.cmd .in{display:flex;align-items:center;gap:12px;padding:6px 12px}
+.cmd input{flex:1;min-width:0;min-height:44px;border:0;outline:0;background:transparent;color:var(--fg);font:inherit;font-size:16px}
+.cmd input::placeholder{color:#7C7C87}
+.pv{margin:4px;border-radius:12px;background:var(--card2);border:1px solid #22222A;padding:14px 16px;display:flex;flex-wrap:wrap;gap:14px 20px;align-items:center}
+.pv .meta{flex:999 1 360px;min-width:0;display:flex;flex-direction:column;gap:4px}
+.tag{padding:1px 7px;border-radius:99px;font-size:11px;font-weight:600}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.side{flex-basis:100%}.health{display:none}}
+.kpi{padding:16px;display:flex;flex-direction:column;gap:2px}.kpi .v{font-size:22px;font-weight:600;letter-spacing:-.02em}
+.cols{display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start}.colmain{flex:999 1 560px;min-width:0;display:flex;flex-direction:column;gap:12px}.colside{flex:1 1 280px;min-width:0;display:flex;flex-direction:column;gap:12px}
+.h2{display:flex;align-items:center;gap:10px}.h2 h2{margin:0;font-size:14px;font-weight:600}.h2 .r{margin-left:auto}
+.job{border-radius:16px;border:1px solid var(--line2);background:var(--card);padding:18px;display:flex;flex-direction:column;gap:16px}
+.jobhead{display:flex;gap:12px;align-items:flex-start;flex-wrap:wrap}.av{width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:0 0 auto}
+.steps{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:6px}.steps li{display:flex;flex-direction:column;gap:6px;font-size:12px}.steps .bar{height:4px;border-radius:99px}
+.now{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:var(--side);border:1px solid #1C1C22;font-family:var(--mono);font-size:12px}
+.now span:last-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+@keyframes shim{0%{background-position:-200px 0}100%{background-position:400px 0}}
+.shimmer{background:linear-gradient(90deg,var(--fg) 0%,var(--fg) 40%,#8A8A95 50%,var(--fg) 60%,var(--fg) 100%);background-size:600px 100%;-webkit-background-clip:text;background-clip:text;color:transparent;animation:shim 2.4s linear infinite}
+.agents{display:flex;gap:6px;flex-wrap:wrap}.ag{padding:3px 9px;border-radius:99px;font-size:12px}
+.meter{height:6px;border-radius:99px;background:#23232A;overflow:hidden}.meter div{height:6px;border-radius:99px}
+.queued{border-radius:14px;border:1px dashed var(--line2);padding:12px 14px;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.list .row{display:flex;align-items:center;gap:14px;padding:12px 16px;border-top:1px solid #1A1A20;flex-wrap:wrap}.list .row:first-child{border-top:0}
+.ico{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex:0 0 auto}
+.feed{padding:6px 16px}.feed .it{display:flex;gap:12px;padding:10px 0;border-bottom:1px solid #1A1A20;font-size:13px}.feed .it:last-child{border-bottom:0}
+.empty{padding:18px;color:var(--dim);font-size:13px;text-align:center}
+.jobs{display:flex;flex-wrap:wrap;min-height:calc(100vh - 67px)}
+.jlist{flex:0 0 340px;border-right:1px solid #1C1C22;display:flex;flex-direction:column}
+@media (max-width:1100px){.jlist{flex-basis:100%;border-right:0;border-bottom:1px solid #1C1C22;max-height:360px;overflow:auto}}
+.seg{display:flex;gap:4px;padding:3px;border-radius:10px;background:var(--card);border:1px solid var(--line)}.seg button{flex:1;min-height:32px;border:0;border-radius:7px;background:transparent;color:var(--mut);font-size:13px;padding:0 12px}
+.seg button[aria-selected="true"]{background:#23232A;color:var(--fg)}
+.jl{display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid #16161B;border-left:2px solid transparent;color:var(--fg)}.jl:hover{background:#0F0F12;color:var(--fg)}.jl.on{background:var(--card);border-left-color:var(--acc)}
+.jl .t{font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.jdetail{flex:999 1 560px;min-width:0;display:flex;flex-direction:column}
+.jdh{padding:20px 28px;border-bottom:1px solid #1C1C22;display:flex;flex-direction:column;gap:14px}
+.stat{padding:12px;border-radius:12px;background:var(--card);border:1px solid var(--line)}.stat .v{font-family:var(--mono);font-size:17px}
+.tabs{display:flex;gap:18px;border-bottom:1px solid #1C1C22}.tabs button{min-height:40px;padding:0 2px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--mut);font-weight:500}
+.tabs button[aria-selected="true"]{border-bottom-color:var(--acc);color:var(--fg)}
+.logbox{border-radius:12px;border:1px solid var(--line);background:var(--side);padding:14px;font-family:var(--mono);font-size:12px;line-height:1.8;color:#B4B4BE;overflow-x:auto}
+.logbox .l{display:flex;gap:14px;white-space:nowrap}.logbox .tool{color:var(--accText);min-width:48px}.logbox .sub{color:var(--faint)}
+.tl .s{display:flex;gap:12px}.tl .rail{display:flex;flex-direction:column;align-items:center}.tl .c{width:18px;height:18px;border-radius:99px;border:2px solid;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;color:#0A0A0A}
+.tl .ln{flex:1;width:2px;min-height:16px;background:#23232A}
+.sec{display:flex;flex-direction:column;gap:12px}.sec h2{margin:0;font-size:15px;font-weight:600}.sec p{margin:0;color:var(--mut);font-size:13px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}@media (max-width:800px){.grid2{grid-template-columns:1fr}}
+.swc{padding:16px;display:flex;gap:14px;align-items:flex-start}
+.sw{flex:0 0 auto;width:44px;height:26px;border-radius:99px;border:0;padding:3px;display:flex;background:var(--line2)}.sw span{width:20px;height:20px;border-radius:99px;background:var(--mut)}
+.sw[aria-checked="true"]{background:var(--acc);justify-content:flex-end}.sw[aria-checked="true"] span{background:#0A0A0A}
+.acct{text-align:left;border-radius:14px;border:1.5px solid #23232A;background:var(--card);padding:16px;display:flex;flex-direction:column;gap:6px}
+.acct[aria-checked="true"]{border-color:var(--acc);background:#141A0B}
+.radio{width:16px;height:16px;border-radius:99px;border:2px solid #3A3A43}.acct[aria-checked="true"] .radio{border-color:var(--acc);background:var(--acc)}
+.lim{display:flex;align-items:center;gap:18px;padding:14px 18px;border-top:1px solid #1A1A20;flex-wrap:wrap}.lim:first-child{border-top:0}
+.lim input{width:140px;min-height:40px;padding:0 12px;border-radius:10px;border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:inherit;font-family:var(--mono)}
+.savebar{position:sticky;bottom:20px;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 18px;border-radius:14px;background:#18181D;border:1px solid var(--line2);box-shadow:0 16px 40px rgba(0,0,0,.55);flex-wrap:wrap}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);display:flex;align-items:center;gap:14px;padding:10px 10px 10px 16px;border-radius:12px;background:var(--fg);color:#0A0A0A;box-shadow:0 12px 32px rgba(0,0,0,.5);font-size:13px;max-width:92vw;z-index:20}
+.toast button{min-height:32px;padding:0 12px;border-radius:8px;border:0;background:#0A0A0A;color:var(--fg);font-weight:600}
+.sr{position:absolute;left:-9999px}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="side">
+  <div class="brand"><div class="logo">D</div><div style="display:flex;flex-direction:column;line-height:1.2"><span style="font-weight:600">Dex</span><span class="dim small">review bot</span></div></div>
+  <nav class="nav" aria-label="Main">
+    <a href="#overview" data-v="overview"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>Overview</a>
+    <a href="#jobs" data-v="jobs"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg>Jobs<span class="badge" id="nav-live" hidden></span></a>
+    <a href="#settings" data-v="settings"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>Settings</a>
+  </nav>
+  <div class="health" id="health"></div>
+</aside>
+
+<div class="main">
+  <header class="top">
+    <h1 id="title">Overview</h1>
+    <span class="pill" id="status">…</span>
+    <div class="acts">
+      <button class="btn" id="pause" type="button"></button>
+      <button class="btn" id="restart" type="button"></button>
+    </div>
+  </header>
+
+  <div id="v-overview" class="wrap">
+    <div id="banners"></div>
+    <section class="cmd" aria-label="Run a review">
+      <div class="in">
+        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#C6F432" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="18" r="2.5"/><path d="M6 8.5v7M18 15.5V9a3 3 0 0 0-3-3h-4"/></svg>
+        <label for="pr" class="sr">Pull request link</label>
+        <input id="pr" type="url" autocomplete="off" spellcheck="false" placeholder="Paste a pull request link to review…">
+        <kbd>/</kbd>
+      </div>
+      <div id="pv" hidden></div>
+    </section>
+    <div class="kpis" id="kpis"></div>
+    <div class="cols">
+      <div class="colmain">
+        <div class="h2"><h2>Live</h2><span class="dim small" id="live-sub"></span></div>
+        <div id="live"></div>
+        <div class="h2" style="margin-top:8px"><h2>Recent</h2><a class="r small" href="#jobs">All jobs →</a></div>
+        <div class="card list" id="recent"></div>
+      </div>
+      <aside class="colside" aria-label="Activity">
+        <div class="h2"><h2>Activity</h2><span class="dim small">Slack, reviews and this page</span></div>
+        <div class="card feed" id="feed"></div>
+      </aside>
+    </div>
+  </div>
+
+  <div id="v-jobs" class="jobs" hidden>
+    <section class="jlist" aria-label="Jobs">
+      <div style="padding:16px;border-bottom:1px solid #1C1C22">
+        <div class="seg" role="tablist" aria-label="Filter" id="jfilter">
+          <button role="tab" data-f="all">All</button><button role="tab" data-f="live">Live</button><button role="tab" data-f="failed">Failed</button><button role="tab" data-f="mine">Mine</button>
+        </div>
+      </div>
+      <div id="jl"></div>
+    </section>
+    <section class="jdetail" id="jd" aria-label="Job"></section>
+  </div>
+
+  <div id="v-settings" class="wrap" hidden></div>
+</div>
+</div>
+<div class="toast" id="toast" role="status" hidden><span id="toast-t"></span><button id="toast-u" type="button" hidden>Undo</button></div>
+
+<script>
+"use strict";
+const TOKEN = document.querySelector('meta[name="dex-token"]').content;
+const $ = id => document.getElementById(id);
+function h(tag, a, ...kids) {
+  const e = document.createElement(tag);
+  for (const k in a || {}) {
+    const v = a[k];
+    if (v == null || v === false) continue;
+    if (k === "class") e.className = v;
+    else if (k.startsWith("on")) e.addEventListener(k.slice(2), v);
+    else e.setAttribute(k, v === true ? "" : v);
+  }
+  for (const c of kids.flat()) { if (c == null || c === false) continue; e.append(c instanceof Node ? c : document.createTextNode(String(c))); }
+  return e;
+}
+const NS = "http://www.w3.org/2000/svg";
+function sv(tag, a, ...kids) { const e = document.createElementNS(NS, tag); for (const k in a || {}) e.setAttribute(k, a[k]); kids.forEach(c => e.append(c)); return e; }
+const fill = (id, ...kids) => { const el = typeof id === "string" ? $(id) : id; el.replaceChildren(...kids.flat().filter(x => x != null && x !== false)); return el; };
+
+const human = n => { n = +n || 0; return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(Math.round(n)); };
+const usd = v => "$" + (+v || 0).toFixed(2);
+const dur = s => { s = Math.max(0, Math.round(s || 0)); const p = n => String(n).padStart(2, "0"); return s >= 3600 ? Math.floor(s / 3600) + "h " + p(Math.floor(s % 3600 / 60)) + "m" : s >= 60 ? Math.floor(s / 60) + "m " + p(s % 60) + "s" : s + "s"; };
+const clock = t => t ? new Date(t * 1000).toTimeString().slice(0, 5) : "—";
+const tokSum = t => t ? (t.fresh || 0) + (t.cache_read || 0) + (t.output || 0) : 0;
+const PR = /^https:\/\/github\.com\/([\w.-]+\/[\w.-]+)\/pull\/(\d+)/;
+
+let D = null, view = "overview", sel = null, jfilter = "all", tab = "calls", force = false;
+let pending = null, toastTimer = null, draft = null, checks = {}, pv = { url: "", data: null, err: "", busy: false }, kind = "review";
+
+const nameOf = id => (D && D.names && D.names[id]) || id || "—";
+const prShort = url => { const m = PR.exec(url || ""); return m ? m[1].split("/")[1] + " #" + m[2] : (url || ""); };
+const jobTitle = j => j.kind === "question" ? "Question from " + nameOf(j.user) : prShort(j.url || j.what);
+const rt = () => (D && D.runtime) || { running: [], recent: [], policy: null };
+const allJobs = () => [...(rt().running || []), ...(rt().recent || [])];
+const ready = () => D && D.controls_ready;
+
+async function api(body) {
+  try {
+    const r = await fetch("/api/action", { method: "POST", headers: { "Content-Type": "application/json", "X-Dex-Token": TOKEN }, body: JSON.stringify(body) });
+    let j; try { j = await r.json(); } catch (e) { j = { ok: false, message: "HTTP " + r.status }; }
+    if (r.status === 202 && j.id) j = await waitResult(j.id) || j;
+    return j;
+  } catch (e) { return { ok: false, message: "The page cannot reach its server." }; }
+}
+async function waitResult(id) {
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1500));
+    try { const j = await (await fetch("/api/result?id=" + encodeURIComponent(id), { headers: { "X-Dex-Token": TOKEN } })).json(); if (j && j.ok !== null && j.ok !== undefined) return j; } catch (e) {}
+  }
+  return null;
+}
+function toast(text, undo, ms) {
+  clearTimeout(toastTimer); $("toast-t").textContent = text; $("toast").hidden = false;
+  const u = $("toast-u"); u.hidden = !undo; u.onclick = () => { undo && undo(); $("toast").hidden = true; };
+  toastTimer = setTimeout(() => { $("toast").hidden = true; }, ms || 4000);
+}
+
+// ---- actions ----
+function stopJob(j) {
+  if (!ready()) return toast("Stop needs Dex restarted once with this version.");
+  if (pending) clearTimeout(pending.timer);
+  const label = jobTitle(j);
+  pending = { id: j.id, timer: setTimeout(async () => { pending = null; render(); const r = await api({ action: "stop", job: j.id }); toast(r.message || (r.ok ? "Stopped." : "Could not stop it.")); tick(); }, 5000) };
+  toast((j.status === "queued" ? "Cancelling " : "Stopping ") + label + " in 5s", () => { clearTimeout(pending.timer); pending = null; render(); }, 5200);
+  render();
+}
+async function runReview(url, f) {
+  if (!ready()) return toast("Run needs Dex running with this version.");
+  toast("Starting a review of " + prShort(url) + "…", null, 20000);
+  const r = await api({ action: "run", url, force: !!f });
+  toast(r.message || (r.ok ? "Queued." : "Dex did not start it."), null, 6000);
+  if (r.ok) { $("pr").value = ""; pv = { url: "", data: null, err: "", busy: false }; renderPreview(); }
+  tick();
+}
+function restart() {
+  const c = D && D.runtime && D.runtime.control;
+  if (c && c.restart_pending) return api({ action: "cancel_restart" }).then(r => { toast(r.message); tick(); });
+  if (!ready()) return toast("Restart needs Dex running with this version.");
+  let undone = false;
+  const t = setTimeout(async () => { if (undone) return; const r = await api({ action: "restart" }); toast(r.message, null, 6000); tick(); }, 5000);
+  toast("Restarting after running jobs finish, in 5s", () => { undone = true; clearTimeout(t); }, 5200);
+}
+
+// ---- top bar & side ----
+function renderTop() {
+  const pol = rt().policy || {};
+  const st = $("status");
+  let col, bg, txt;
+  if (!D.running) { col = "var(--bad)"; bg = "var(--badBg)"; txt = "Dex is not running"; }
+  else if (D.settings.paused) { col = "var(--warn)"; bg = "var(--warnBg)"; txt = "Paused · new work waits"; }
+  else { col = "var(--ok)"; bg = "#0F2A1F"; txt = "Running"; }
+  st.style.color = col; st.style.background = bg;
+  fill(st, h("span", { class: "dot" + (D.running ? " live" : ""), style: "background:" + col }), txt);
+  fill("pause", D.settings.paused ? "Resume" : "Pause all");
+  const c = (D.runtime && D.runtime.control) || {};
+  const busy = (rt().running || []).length;
+  fill("restart", c.restart_pending ? "Cancel restart (waiting for " + busy + ")" : busy ? "Restart after current" : "Restart");
+  $("restart").disabled = !D.running;
+  const live = (rt().running || []).length; const nb = $("nav-live"); nb.hidden = !live; nb.textContent = live;
+  const r = D.runtime;
+  fill("health",
+    h("div", { style: "display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px" }, h("span", { class: "dot" + (D.running ? " live" : ""), style: "width:8px;height:8px;color:var(--ok);background:" + (D.running ? "var(--ok)" : "var(--bad)") }), D.running ? "Dex is up" : "Dex is down"),
+    r ? h("div", { class: "row" }, h("span", null, "Process"), h("span", { class: "mono" }, "pid " + r.pid)) : null,
+    r ? h("div", { class: "row" }, h("span", null, "Uptime"), h("span", { class: "mono" }, dur(D.now - r.started_at))) : null,
+    r ? h("div", { class: "row" }, h("span", null, "Snapshot"), h("span", { class: "mono" }, dur(D.last_seen_s) + " ago")) : null,
+    h("div", { class: "row" }, h("span", null, "Reviews on"), h("span", null, D.settings.accounts.review)),
+    h("div", { class: "row" }, h("span", null, "Spend today"), h("span", { class: "mono" }, usd(pol.global_usd))));
+}
+
+// ---- overview ----
+function banners() {
+  const out = [];
+  if (!D.running) out.push(h("div", { class: "banner bad" }, "Dex is not running" + (D.last_seen_s ? " (last seen " + dur(D.last_seen_s) + " ago)" : "") + ". Settings still save; Stop, Run and Restart need it running."));
+  else if (!D.controls_ready) out.push(h("div", { class: "banner warn" }, "Stop, Run and Restart need Dex restarted once with this version. Everything else works now."));
+  const c = (D.runtime && D.runtime.control) || {};
+  if (c.restart_pending) out.push(h("div", { class: "banner warn" }, "Restart pending: Dex restarts as soon as the running jobs finish."));
+  fill("banners", out);
+}
+function ring(frac) {
+  const C = 2 * Math.PI * 21, f = Math.max(0, Math.min(1, frac || 0));
+  return sv("svg", { width: 52, height: 52, viewBox: "0 0 52 52", role: "img", "aria-label": Math.round(f * 100) + "% of today's cap" },
+    sv("circle", { cx: 26, cy: 26, r: 21, fill: "none", stroke: "#23232A", "stroke-width": 6 }),
+    sv("circle", { cx: 26, cy: 26, r: 21, fill: "none", stroke: f > .85 ? "#F87171" : "#C6F432", "stroke-width": 6, "stroke-linecap": "round", "stroke-dasharray": (f * C).toFixed(1) + " " + C.toFixed(1), transform: "rotate(-90 26 26)" }));
+}
+function renderKpis() {
+  const pol = rt().policy || {}, cap = D.settings.caps.daily, t = pol.tokens || {}, tot = tokSum(t) || 1;
+  const days = Object.values(D.by_day || {}).map(v => v.usd);
+  const live = (rt().running || []).filter(j => j.status === "running").length, queued = (rt().running || []).filter(j => j.status === "queued").length;
+  fill("kpis",
+    h("div", { class: "card kpi", style: "flex-direction:row;gap:14px;align-items:center" }, ring(cap ? pol.global_usd / cap : 0),
+      h("div", null, h("div", { class: "mut small" }, "Spend today"), h("div", { class: "v" }, usd(pol.global_usd)), h("div", { class: "dim small" }, (cap ? "of " + usd(cap) + " cap" : "no daily cap") + " · 7 days " + usd(days.reduce((a, b) => a + b, 0))))),
+    h("div", { class: "card kpi" }, h("div", { class: "mut small" }, "Reviews today"), h("div", { style: "display:flex;align-items:baseline;gap:8px" }, h("span", { class: "v" }, D.today.reviews), h("span", { class: "mut small" }, live + " running · " + queued + " queued"))),
+    h("div", { class: "card kpi" }, h("div", { class: "mut small" }, "Questions today"), h("div", { class: "v" }, D.today.questions), h("div", { class: "dim small" }, (pol.router_calls || 0) + " router calls")),
+    h("div", { class: "card kpi" }, h("div", { class: "mut small" }, "Tokens today"), h("div", { style: "display:flex;align-items:baseline;gap:8px" }, h("span", { class: "v" }, human(tokSum(t))), h("span", { class: "mut small" }, Math.round(100 * (t.cache_read || 0) / tot) + "% cached")),
+      h("div", { style: "display:flex;height:6px;border-radius:99px;overflow:hidden;margin-top:12px" }, h("div", { style: "background:#EDEDF0;width:" + (100 * (t.fresh || 0) / tot) + "%" }), h("div", { style: "background:#4B4B55;width:" + (100 * (t.cache_read || 0) / tot) + "%" }), h("div", { style: "background:#C6F432;width:" + (100 * (t.output || 0) / tot) + "%" }))));
+}
+function stage(j) {
+  const ag = j.agents || [], act = j.activity || "";
+  if (j.status === "queued") return 0;
+  if (/posting/.test(act)) return 5;
+  if (ag.length && ag.some(a => a.status === "running")) return 3;
+  if (ag.length) return 4;
+  if (j.steps > 2) return 2;
+  return 1;
+}
+function stepper(j) {
+  const ag = j.agents || [], s = stage(j), done = ag.filter(a => a.status === "done").length;
+  const labels = ["Queued", "Worktree", "Skill", ag.length ? "Agents " + done + "/" + ag.length : "Agents", "Verify", "Post"];
+  return h("ol", { class: "steps", "aria-label": "Steps" }, labels.map((l, i) => h("li", null,
+    h("div", { class: "bar", style: "background:" + (i < s ? "#C6F432" : i === s ? "#FBBF24" : "#23232A") }),
+    h("span", { style: "color:" + (i === s ? "var(--fg)" : i < s ? "var(--mut)" : "var(--faint)") + ";font-weight:" + (i === s ? 600 : 400) }, l))));
+}
+function lastCall(j) { const l = (j.log || []).slice(-1)[0]; return l ? l.tool + " · " + l.detail : (j.activity || ""); }
+function agentChips(j) {
+  return h("div", { class: "agents" }, (j.agents || []).map(a => a.status === "done"
+    ? h("span", { class: "ag", style: "background:var(--okBg);color:var(--okText)" }, "✓ " + a.name)
+    : h("span", { class: "ag", style: "background:var(--warnBg);color:var(--warnText)" }, "● " + a.name)));
+}
+function stopBtn(j) {
+  const p = pending && pending.id === j.id;
+  return h("button", { class: "btn sm danger", type: "button", disabled: p || !ready(), onclick: () => stopJob(j) },
+    sv("svg", { width: 11, height: 11, viewBox: "0 0 24 24", fill: "currentColor", "aria-hidden": "true" }, sv("rect", { x: 5, y: 5, width: 14, height: 14, rx: 2 })),
+    p ? "Stopping…" : j.status === "queued" ? "Cancel" : "Stop");
+}
+function capOf(j) { return j.kind === "question" ? D.settings.caps.question : D.settings.caps.review; }
+function liveCard(j) {
+  const isQ = j.kind === "question", repo = (j.repo || "").split("/")[1] || "";
+  const ini = isQ ? "?" : (repo.match(/\b\w/g) || ["PR"]).join("").slice(0, 2).toUpperCase();
+  const cap = capOf(j), p = pending && pending.id === j.id;
+  return h("article", { class: "job" },
+    h("div", { class: "jobhead" },
+      h("div", { class: "av", style: isQ ? "background:var(--infoBg);color:var(--infoText)" : "background:var(--accBg);color:var(--acc)" }, ini),
+      h("div", { style: "flex:1 1 260px;min-width:0" },
+        h("a", { href: "#jobs/" + encodeURIComponent(j.id), style: "color:var(--fg);font-weight:600;font-size:15px" }, jobTitle(j)),
+        h("div", { class: "mut small", style: "display:flex;gap:8px;flex-wrap:wrap" }, j.sha ? h("span", { class: "mono" }, "@" + j.sha) : null, h("span", null, "asked by " + nameOf(j.user)), h("span", { class: "mono" }, dur(j.age_s)))),
+      h("div", { style: "display:flex;gap:8px" }, j.url ? h("a", { class: "btn sm ghost", href: j.url, target: "_blank", rel: "noopener noreferrer" }, "PR ↗") : null, h("a", { class: "btn sm ghost", href: "#jobs/" + encodeURIComponent(j.id) }, "Open"), stopBtn(j))),
+    isQ ? null : stepper(j),
+    h("div", { class: "now" }, h("span", { style: "color:var(--acc)" }, "›"), h("span", { class: p ? "" : "shimmer" }, p ? "stop requested · nothing will be posted" : lastCall(j))),
+    h("div", { style: "display:flex;flex-wrap:wrap;gap:16px;align-items:center" },
+      h("div", { style: "flex:999 1 300px" }, agentChips(j)),
+      h("div", { class: "mut small mono", style: "flex:0 0 auto" }, human(tokSum(j.tokens)) + " tok · " + j.steps + " steps" + (cap ? " · cap " + usd(cap) : ""))));
+}
+function queuedRow(j, i) {
+  return h("div", { class: "queued" }, h("span", { class: "mono dim small" }, "#" + (i + 1)),
+    h("span", { style: "flex:999 1 240px;min-width:0" }, h("span", { style: "font-weight:500" }, jobTitle(j)), h("span", { class: "mut small" }, " · " + nameOf(j.user) + " · waiting " + dur(j.age_s))), stopBtn(j));
+}
+const OUT = o => {
+  o = (o || "").toLowerCase();
+  if (/approved/.test(o)) return ["✓", "var(--okBg)", "var(--okText)"];
+  if (/changes/.test(o)) return ["!", "var(--warnBg)", "var(--warnText)"];
+  if (/comment|answer/.test(o)) return ["•", "var(--infoBg)", "var(--infoText)"];
+  return ["×", "var(--badBg)", "var(--badText)"];
+};
+function costMap() { const m = {}; for (const r of (D.recent || []).slice().reverse()) if (r.pr && r.usd) m[r.pr] = r.usd; return m; }
+function outcomeOf(j) { return j.outcome || (j.status === "done" ? "done" : j.status); }
+function recentRow(j, cm) {
+  const o = outcomeOf(j), [ic, bg, fg] = j.kind === "question" ? ["?", "var(--infoBg)", "var(--infoText)"] : OUT(o);
+  const took = j.finished_at && j.started_at ? dur(j.finished_at - j.started_at) : "";
+  return h("div", { class: "row" }, h("span", { class: "ico", style: "background:" + bg + ";color:" + fg, "aria-hidden": "true" }, ic),
+    h("a", { href: "#jobs/" + encodeURIComponent(j.id), style: "flex:999 1 240px;min-width:0;color:var(--fg)" }, h("div", { style: "font-weight:500" }, jobTitle(j)), h("div", { class: "dim small" }, [nameOf(j.user), j.finished_at ? clock(j.finished_at) : "", took].filter(Boolean).join(" · "))),
+    h("span", { class: "small", style: "color:" + fg }, o),
+    h("span", { class: "mono small mut", style: "min-width:56px;text-align:right" }, cm[j.url] ? usd(cm[j.url]) : ""),
+    j.kind !== "question" && j.url ? h("button", { class: "btn sm ghost", type: "button", disabled: !ready(), onclick: () => runReview(j.url, true) }, "Rerun") : null);
+}
+const ACT_DOT = d => /done|answered|started/.test(d) ? "var(--ok)" : /fail|budget|refused/.test(d) ? "var(--bad)" : /stop/.test(d) ? "var(--warn)" : "var(--info)";
+function actText(r) {
+  const who = nameOf(r.user), pr = prShort(r.pr), d = r.decision || "";
+  if (r.capability === "review") {
+    if (d === "started") return who + " asked for a review of " + pr;
+    if (d === "done") return "Review of " + pr + ": " + (r.outcome || "done") + (r.usd ? " · " + usd(r.usd) : "");
+    if (d === "failed") return "Review of " + pr + " failed";
+    if (d === "stopped") return "Review of " + pr + " was stopped";
+    if (d === "budget_stopped") return "Review of " + pr + " hit its cost cap";
+    if (d.startsWith("refused")) return "Refused a review of " + pr + " (" + d.replace("refused_", "").replace("_", " ") + ")";
+  }
+  if (r.capability === "question") return d === "answered" ? "Answered " + who + (r.usd ? " · " + usd(r.usd) : "") : "Question from " + who + ": " + d.replace(/_/g, " ");
+  if (r.capability === "control") {
+    const job = r.job ? String(r.job).replace(/^[^/]+\//, "").replace(/@.*/, "").replace("#", " #") : "";
+    return "Owner: " + d.replace("page_", "").replace(/_/g, " ") + " " + [r.target, job, r.pr ? prShort(r.pr) : "", r.profile, r.value].filter(Boolean).join(" ") + (r.ok === false ? " (failed)" : "");
+  }
+  return (r.capability || "") + " " + d.replace(/_/g, " ");
+}
+function renderOverview() {
+  banners(); renderKpis();
+  const run = rt().running || [], running = run.filter(j => j.status === "running"), queued = run.filter(j => j.status === "queued");
+  fill("live-sub", running.length + " running · " + queued.length + " queued");
+  fill("live", running.length ? running.map(liveCard) : h("div", { class: "card empty" }, "Nothing running. Paste a PR link above to start a review."), queued.map(queuedRow));
+  $("live").style.cssText = "display:flex;flex-direction:column;gap:12px";
+  const cm = costMap(), rec = (rt().recent || []).slice(0, 8);
+  fill("recent", rec.length ? rec.map(j => recentRow(j, cm)) : h("div", { class: "empty" }, "No finished jobs since Dex started."));
+  const feed = (D.recent || []).slice(0, 14);
+  fill("feed", feed.length ? feed.map(r => h("div", { class: "it" }, h("span", { class: "dot", style: "margin-top:7px;background:" + ACT_DOT(r.decision || "") }),
+    h("div", { style: "flex:1;min-width:0" }, h("div", null, actText(r)), h("div", { class: "dim small" }, (r.ts || "").slice(11, 16) + " · " + (r.source === "page" ? "this page" : r.channel ? "Slack" : "Dex"))))) : h("div", { class: "empty" }, "No activity yet."));
+}
+
+// ---- PR preview ----
+let pvTimer = null;
+$("pr").addEventListener("input", e => { clearTimeout(pvTimer); pvTimer = setTimeout(() => loadPreview(e.target.value.trim()), 350); });
+$("pr").addEventListener("keydown", e => { if (e.key === "Enter" && pv.data && pv.data.reviewable) runReview(pv.data.url, force); if (e.key === "Escape") { e.target.value = ""; loadPreview(""); } });
+document.addEventListener("keydown", e => { if (e.key === "/" && document.activeElement.tagName !== "INPUT") { e.preventDefault(); location.hash = "#overview"; $("pr").focus(); } });
+async function loadPreview(url) {
+  if (!PR.test(url)) { pv = { url, data: null, err: url ? "That is not a GitHub pull request link." : "", busy: false }; return renderPreview(); }
+  pv = { url, data: null, err: "", busy: true }; renderPreview();
+  try {
+    const r = await fetch("/api/pr?url=" + encodeURIComponent(url), { headers: { "X-Dex-Token": TOKEN } });
+    const j = await r.json();
+    if (pv.url !== url) return;
+    pv = r.ok ? { url, data: j, err: "", busy: false } : { url, data: null, err: j.error || "Could not read it.", busy: false };
+  } catch (e) { pv = { url, data: null, err: "Could not read it.", busy: false }; }
+  renderPreview();
+}
+function renderPreview() {
+  const box = $("pv"); box.hidden = !(pv.busy || pv.err || pv.data);
+  if (pv.busy) return fill(box, h("div", { class: "pv mut" }, "Reading the PR…"));
+  if (pv.err) return fill(box, h("div", { class: "pv", style: "color:var(--badText)" }, pv.err));
+  const d = pv.data; if (!d) return fill(box);
+  const st = d.state !== "OPEN" ? ["closed", "var(--badBg)", "var(--badText)"] : !d.reviewable ? ["not a review repo", "var(--badBg)", "var(--badText)"] : d.draft ? ["draft", "var(--warnBg)", "var(--warnText)"] : ["ready", "var(--accBg)", "var(--acc)"];
+  const can = d.state === "OPEN" && d.reviewable;
+  fill(box, h("div", { class: "pv" },
+    h("div", { class: "meta" },
+      h("div", { class: "mut small", style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" }, h("span", { class: "mono" }, d.repo), h("span", null, "#" + d.number), h("span", { class: "tag", style: "background:" + st[1] + ";color:" + st[2] }, st[0])),
+      h("div", { style: "font-weight:600;font-size:15px" }, d.title),
+      h("div", { class: "mut small", style: "display:flex;gap:14px;flex-wrap:wrap" }, h("span", null, "by " + d.author), h("span", { class: "mono" }, h("span", { style: "color:var(--ok)" }, "+" + d.additions), " ", h("span", { style: "color:var(--bad)" }, "−" + d.deletions), " · " + d.files + " files"), d.skill ? h("span", null, "skill " + d.skill.replace(/^\//, "")) : null, h("span", { class: "mono" }, "@" + d.sha),
+        D && D.settings.caps.pr_files && d.files > D.settings.caps.pr_files ? h("span", { style: "color:var(--warnText)" }, "over the " + D.settings.caps.pr_files + "-file limit") : null)),
+    h("div", { style: "display:flex;gap:8px;flex-wrap:wrap;align-items:center" },
+      h("button", { class: "chip", type: "button", "aria-pressed": String(force), onclick: e => { force = !force; e.currentTarget.setAttribute("aria-pressed", String(force)); } }, "Force rerun"),
+      h("button", { class: "btn primary", type: "button", disabled: !can || !ready(), onclick: () => runReview(d.url, force) }, "Run review ", h("kbd", { style: "border-color:rgba(0,0,0,.2);color:#0A0A0A" }, "↵")))));
+}
+
+// ---- jobs ----
+function jobsFiltered() {
+  const js = allJobs();
+  if (jfilter === "live") return js.filter(j => j.status === "queued" || j.status === "running");
+  if (jfilter === "failed") return js.filter(j => j.status === "failed" || j.status === "stopped");
+  if (jfilter === "mine") return js.filter(j => j.user === D.owner);
+  return js;
+}
+const SDOT = j => j.status === "running" ? "var(--warn)" : j.status === "queued" ? "var(--mut)" : j.status === "done" ? (/changes/.test(j.outcome || "") ? "var(--warn)" : "var(--ok)") : "var(--bad)";
+function renderJobs() {
+  for (const b of $("jfilter").children) b.setAttribute("aria-selected", String(b.dataset.f === jfilter));
+  const js = jobsFiltered();
+  if (!sel || !allJobs().some(j => j.id === sel)) sel = (js[0] || {}).id || null;
+  fill("jl", js.length ? js.map(j => h("a", { class: "jl" + (j.id === sel ? " on" : ""), href: "#jobs/" + encodeURIComponent(j.id) },
+    h("span", { class: "dot", style: "margin-top:8px;background:" + SDOT(j) }),
+    h("div", { style: "flex:1;min-width:0" }, h("div", { class: "t" }, jobTitle(j)), h("div", { class: "mut small" }, nameOf(j.user) + " · " + (j.status === "running" || j.status === "queued" ? j.status + " " + dur(j.age_s) : clock(j.finished_at) + " · " + outcomeOf(j)))))) : h("div", { class: "empty" }, "No jobs here."));
+  const j = allJobs().find(x => x.id === sel);
+  if (!j) return fill("jd", h("div", { class: "empty", style: "padding:48px" }, "Dex keeps the jobs since it started. Pick one on the left."));
+  const isLive = j.status === "running" || j.status === "queued", cm = costMap(), cost = cm[j.url];
+  const stCol = isLive ? ["var(--warnBg)", "var(--warn)"] : j.status === "done" ? ["var(--okBg)", "var(--ok)"] : ["var(--badBg)", "var(--bad)"];
+  const ag = j.agents || [], s = stage(j);
+  const stagesL = ["Queued", "Worktree pinned" + (j.sha ? " to " + j.sha : ""), "Skill running", "Review agents" + (ag.length ? " (" + ag.filter(a => a.status === "done").length + "/" + ag.length + ")" : ""), "Verify citations", "Decision and post"];
+  const doneAll = !isLive;
+  fill("jd",
+    h("div", { class: "jdh" },
+      h("div", { style: "display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap" },
+        h("div", { style: "flex:999 1 360px;min-width:0;display:flex;flex-direction:column;gap:6px" },
+          h("div", { style: "display:flex;gap:8px;align-items:center;flex-wrap:wrap" }, h("span", { class: "pill", style: "background:" + stCol[0] + ";color:" + stCol[1] }, h("span", { class: "dot" + (isLive ? " live" : ""), style: "background:" + stCol[1] }), isLive ? j.status : outcomeOf(j)), j.url ? h("span", { class: "mono mut small" }, j.url.replace("https://github.com/", "") + (j.sha ? " @" + j.sha : "")) : null),
+          h("h2", { style: "margin:0;font-size:22px;font-weight:600;letter-spacing:-.02em" }, jobTitle(j)),
+          h("div", { class: "mut small" }, "asked by " + nameOf(j.user) + (j.started_at ? " · started " + clock(j.started_at) : "") + (j.finished_at ? " · finished " + clock(j.finished_at) : ""))),
+        h("div", { style: "display:flex;gap:8px;flex-wrap:wrap" },
+          j.url ? h("a", { class: "btn ghost", href: j.url, target: "_blank", rel: "noopener noreferrer" }, "PR ↗") : null,
+          j.link ? h("a", { class: "btn ghost", href: j.link, target: "_blank", rel: "noopener noreferrer" }, "Review ↗") : null,
+          isLive ? stopBtn(j) : j.url ? h("button", { class: "btn", type: "button", disabled: !ready(), onclick: () => runReview(j.url, true) }, "Rerun") : null)),
+      h("div", { class: "kpis" },
+        h("div", { class: "stat" }, h("div", { class: "mut small" }, isLive ? "Elapsed" : "Took"), h("div", { class: "v" }, isLive ? dur(j.age_s) : j.finished_at && j.started_at ? dur(j.finished_at - j.started_at) : "—")),
+        h("div", { class: "stat" }, h("div", { class: "mut small" }, "Cost"), h("div", { class: "v" }, cost ? usd(cost) : isLive ? "live: n/a" : "—", h("span", { class: "dim small" }, capOf(j) ? " / cap " + usd(capOf(j)) : ""))),
+        h("div", { class: "stat" }, h("div", { class: "mut small" }, "Tokens"), h("div", { class: "v" }, human(tokSum(j.tokens)), h("span", { class: "dim small" }, " " + Math.round(100 * ((j.tokens || {}).cache_read || 0) / (tokSum(j.tokens) || 1)) + "% cached"))),
+        h("div", { class: "stat" }, h("div", { class: "mut small" }, "Steps · agents"), h("div", { class: "v" }, j.steps + " · " + ag.length)))),
+    h("div", { style: "padding:20px 28px 40px;display:flex;flex-wrap:wrap;gap:20px;align-items:flex-start" },
+      h("div", { style: "flex:999 1 420px;min-width:0;display:flex;flex-direction:column;gap:14px" },
+        h("div", { class: "tabs", role: "tablist" },
+          h("button", { role: "tab", type: "button", "aria-selected": String(tab === "calls"), onclick: () => { tab = "calls"; renderJobs(); } }, "Tool calls · " + (j.log || []).length),
+          h("button", { role: "tab", type: "button", "aria-selected": String(tab === "agents"), onclick: () => { tab = "agents"; renderJobs(); } }, "Agents · " + ag.length)),
+        tab === "calls"
+          ? ((j.log || []).length ? h("div", { class: "logbox" }, (j.log || []).map(l => h("div", { class: "l" }, h("span", { class: "dim" }, new Date(l.t * 1000).toTimeString().slice(0, 8)), h("span", { class: l.main ? "tool" : "tool sub" }, l.tool), h("span", { class: l.main ? "" : "sub" }, l.detail))))
+              : h("div", { class: "card empty" }, j.log ? "No tool calls yet." : "Tool calls show for jobs that started after Dex was restarted with this version."))
+          : (ag.length ? h("div", { class: "card list" }, ag.map(a => h("div", { class: "row" }, h("span", { class: "dot", style: "background:" + (a.status === "done" ? "var(--ok)" : "var(--warn)") }), h("span", { style: "flex:1" }, a.name), h("span", { class: "mono small mut" }, a.status === "done" ? "done in " + dur(a.finished - a.started) : "running " + dur(D.now - a.started)))))
+              : h("div", { class: "card empty" }, "No review agents yet."))),
+      j.kind === "question" ? null : h("aside", { class: "card tl", style: "flex:1 1 280px;min-width:0;padding:16px" }, h("h3", { style: "margin:0 0 10px;font-size:13px;font-weight:600" }, "Timeline"),
+        stagesL.map((l, i) => { const st = doneAll ? (j.status === "done" ? "done" : i < s ? "done" : "todo") : i < s ? "done" : i === s ? "cur" : "todo";
+          return h("div", { class: "s" }, h("div", { class: "rail" }, h("span", { class: "c", style: st === "done" ? "background:#C6F432;border-color:#C6F432" : st === "cur" ? "background:transparent;border-color:#FBBF24" : "background:transparent;border-color:#2A2A31" }, st === "done" ? "✓" : ""), i < stagesL.length - 1 ? h("span", { class: "ln" }) : null),
+            h("div", { style: "padding-bottom:12px;font-size:13px;color:" + (st === "cur" ? "var(--fg)" : st === "done" ? "#B4B4BE" : "var(--faint)") + ";font-weight:" + (st === "cur" ? 600 : 400) }, l)); }))));
+}
+$("jfilter").addEventListener("click", e => { const f = e.target.dataset && e.target.dataset.f; if (f) { jfilter = f; renderJobs(); } });
+
+// ---- settings ----
+const clone = o => JSON.parse(JSON.stringify(o));
+function changes() {
+  if (!draft) return [];
+  const a = D.settings, out = [];
+  for (const c of a.capabilities) if (a.disabled.includes(c) !== draft.disabled.includes(c)) out.push({ label: c + (draft.disabled.includes(c) ? " off" : " on"), body: { action: draft.disabled.includes(c) ? "disable" : "enable", capability: c } });
+  for (const k in a.accounts) if (a.accounts[k] !== draft.accounts[k]) out.push({ label: k + " → " + draft.accounts[k], body: { action: "account", kind: k, profile: draft.accounts[k] } });
+  for (const k in a.caps) { const x = a.caps[k] == null ? "" : String(+a.caps[k]), y = draft.caps[k] == null || draft.caps[k] === "" ? "" : String(+draft.caps[k]); if (x !== y) out.push({ label: CAPS[k][0].toLowerCase() + " " + (y ? (k === "pr_files" ? y + " files" : usd(y)) : "off"), body: { action: "cap", what: k, value: y || "off" } }); }
+  return out;
+}
+const CAPS = { review: ["Per review", "A review that reaches this spend stops and tells the requester", "$"], question: ["Per question", "An answer that reaches this spend stops", "$"], daily: ["Daily total", "Everyone together; resets at midnight", "$"], pr_files: ["Largest PR", "Bigger PRs get a polite no (the owner can force)", "files"] };
+const KDESC = { review: "Reviews", question: "Questions", router: "Router" };
+function renderSettings() {
+  const box = $("v-settings");
+  if (!draft) draft = clone(D.settings);
+  const capCards = D.settings.capabilities.map(c => { const on = !draft.disabled.includes(c);
+    return h("div", { class: "card swc" }, h("div", { class: "av", style: "width:36px;height:36px;" + (on ? "background:var(--accBg);color:var(--acc)" : "background:var(--card2);color:var(--faint)") }, c[0].toUpperCase()),
+      h("div", { style: "flex:1;min-width:0" }, h("div", { style: "font-weight:600" }, c === "review" ? "Reviews" : "Questions"), h("div", { class: "mut small" }, c === "review" ? "PR links, and \"review\" in a PR thread" : "The read-only assistant for everything else")),
+      h("button", { class: "sw", role: "switch", type: "button", "aria-checked": String(on), "aria-label": c, onclick: () => { draft.disabled = on ? [...draft.disabled, c] : draft.disabled.filter(x => x !== c); renderSettings(true); } }, h("span"))); });
+  const acctCards = D.settings.profiles.map(p => { const on = draft.accounts[kind] === p, ck = checks[p];
+    return h("button", { class: "acct", role: "radio", type: "button", "aria-checked": String(on), onclick: () => { draft.accounts[kind] = p; renderSettings(true); } },
+      h("span", { style: "display:flex;justify-content:space-between;align-items:center;width:100%" }, h("span", { style: "font-weight:600" }, p === "foundry" ? "Azure Foundry" : p === "subscription" ? "Subscription" : p), h("span", { class: "radio" })),
+      h("span", { class: "mut small" }, p === "foundry" ? "Company account, billed per token" : p === "subscription" ? "Personal plan; cost shown as an API-equivalent estimate" : "Profile from claude_profiles.json"),
+      ck ? h("span", { class: "mono small", style: "color:" + (ck.ok ? "var(--okText)" : ck.ok === false ? "var(--badText)" : "var(--mut)") }, ck.message) : null); });
+  fill(box,
+    h("section", { class: "sec" }, h("div", null, h("h2", null, "What Dex does"), h("p", null, "Off means Dex replies that it is switched off. Running jobs finish. Pause all (top) stops every costly job at once.")), h("div", { class: "grid2" }, capCards)),
+    h("section", { class: "sec" }, h("div", null, h("h2", null, "Claude account"), h("p", null, "Per kind of run, for everyone, from the next job. Sending code to a personal account: check company policy.")),
+      h("div", { class: "seg", role: "tablist", style: "align-self:flex-start" }, Object.keys(KDESC).map(k => h("button", { role: "tab", type: "button", "aria-selected": String(k === kind), onclick: () => { kind = k; renderSettings(true); } }, KDESC[k] + (draft.accounts[k] !== D.settings.accounts[k] ? " •" : "")))),
+      h("div", { class: "grid2", role: "radiogroup", "aria-label": KDESC[kind] + " account" }, acctCards),
+      h("div", null, h("button", { class: "btn sm", type: "button", onclick: async () => { const p = draft.accounts[kind]; checks[p] = { ok: null, message: "checking…" }; renderSettings(true); const r = await api({ action: "check_account", profile: p }); checks[p] = { ok: r.ok, message: r.message }; renderSettings(true); } }, "Check the selected account"))),
+    h("section", { class: "sec" }, h("div", null, h("h2", null, "Limits"), h("p", null, "Empty means no limit.")),
+      h("div", { class: "card" }, Object.keys(CAPS).map(k => h("div", { class: "lim" },
+        h("label", { for: "cap-" + k, style: "flex:1 1 220px;min-width:0" }, h("span", { style: "display:block;font-weight:500" }, CAPS[k][0]), h("span", { class: "mut small" }, CAPS[k][1])),
+        h("span", { class: "mut mono" }, CAPS[k][2] === "$" ? "$" : ""),
+        h("input", { id: "cap-" + k, type: "number", min: "0", step: k === "pr_files" ? "1" : "0.25", inputmode: "decimal", placeholder: "off", value: draft.caps[k] == null ? "" : String(draft.caps[k]), oninput: e => { draft.caps[k] = e.target.value; renderSaveBar(); } }),
+        h("span", { class: "mut small", style: "min-width:36px" }, CAPS[k][2] === "files" ? "files" : ""))))),
+    h("div", { id: "savebar" }));
+  renderSaveBar();
+}
+function renderSaveBar() {
+  const bar = $("savebar"); if (!bar) return;
+  const ch = changes();
+  if (!ch.length) return fill(bar);
+  fill(bar, h("div", { class: "savebar", role: "region", "aria-label": "Unsaved changes" },
+    h("span", { class: "dot", style: "background:var(--warn)" }), h("span", { style: "flex:1;min-width:200px" }, ch.length + " unsaved: " + ch.map(c => c.label).join(", ")),
+    h("button", { class: "btn ghost", type: "button", onclick: () => { draft = clone(D.settings); renderSettings(true); } }, "Discard"),
+    h("button", { class: "btn primary", type: "button", onclick: async e => { e.currentTarget.disabled = true; const bad = []; for (const c of ch) { const r = await api(c.body); if (!r.ok) bad.push(c.label + ": " + r.message); } await tick(true); draft = clone(D.settings); renderSettings(true); toast(bad.length ? "Not saved: " + bad.join("; ") : "Applied. Dex picks it up on its next message.", null, 6000); } }, "Apply now")));
+}
+
+// ---- routing & loop ----
+function route() {
+  const m = /^#(overview|jobs|settings)(?:\/(.+))?$/.exec(location.hash) || [, "overview"];
+  view = m[1]; if (m[2]) sel = decodeURIComponent(m[2]);
+  for (const v of ["overview", "jobs", "settings"]) $("v-" + v).hidden = v !== view;
+  for (const a of document.querySelectorAll(".nav a")) a.classList.toggle("on", a.dataset.v === view);
+  fill("title", { overview: "Overview", jobs: "Jobs", settings: "Settings" }[view]);
+  if (view === "settings") { draft = null; fill("v-settings"); }
+  render();
+}
+function render() {
+  if (!D) return;
+  renderTop();
+  if (view === "overview") renderOverview();
+  else if (view === "jobs") renderJobs();
+  else if (!$("v-settings").childElementCount || !draft) renderSettings(true);
+  else renderSaveBar();
+}
+async function tick(quiet) {
+  try { D = await (await fetch("/api/state", { cache: "no-store" })).json(); }
+  catch (e) { fill("status", "page cannot reach its server"); return; }
+  if (!quiet) render();
+}
+$("pause").addEventListener("click", async () => { const r = await api({ action: D.settings.paused ? "resume" : "pause" }); if (!r.ok) toast(r.message); await tick(); });
+$("restart").addEventListener("click", restart);
+window.addEventListener("hashchange", route);
+route(); tick(); setInterval(tick, 2000);
+</script>
+</body>
+</html>

@@ -62,7 +62,7 @@ def answer_question(channel, thread_ts, msg_ts, user, text, header):
         with state.lock:
             state.qa_active[k] = time.time()
         qkey = f"q:{channel}:{thread_ts}:{time.time_ns()}"
-        state.new_job(qkey, kind="question", label=f"A question from <@{user}>", url="", sha="", repo="", user=user)
+        state.new_job(qkey, kind="question", label=f"A question from <@{user}>", url="", sha="", repo="", user=user, channel=channel, thread=thread_ts)
         state.update_job(qkey, status="running", started_at=time.time(), last_event=time.time(), activity="working on it")
         max_usd = services.policy.max_job_usd("question")
         cost, final = 0.0, "failed"

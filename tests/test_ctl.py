@@ -89,8 +89,9 @@ class Dashboard(unittest.TestCase):
     def test_refuses_foreign_hosts_and_any_change(self):
         for host in ("evil.example", f"evil.example:{self.port}", f"127.0.0.1:{self.port + 1}", "", f"127.0.0.1.evil.com:{self.port}"): self.assertEqual(self.get("/api/state", host=host)[0], 403, host)
         self.assertEqual(self.get("/api/state", host=f"localhost:{self.port}")[0], 200)
-        for m in ("POST", "PUT", "DELETE", "PATCH"): self.assertEqual(self.get("/api/state", method=m)[0], 405, m)
+        self.assertEqual(self.get("/api/action", method="POST")[0], 403, "a change without the page's origin and token")
+        for m in ("PUT", "DELETE", "PATCH", "OPTIONS"): self.assertEqual(self.get("/api/state", method=m)[0], 405, m)
     def test_the_page_pulls_nothing_external_and_never_uses_innerhtml(self):
-        page = dashboard.PAGE; self.assertNotRegex(page, r"(?i)(src|href)\s*=\s*[\"']https?://"); self.assertNotIn("http://", page.replace("http://127.0.0.1", "")); self.assertNotIn("innerHTML", page); self.assertIn("textContent", page)
+        page = dashboard.PAGE; self.assertNotRegex(page, r"(?i)(src|href)\s*=\s*[\"']https?://"); self.assertNotIn("http://", page.replace("http://127.0.0.1", "").replace("http://www.w3.org/2000/svg", "")); self.assertNotIn("innerHTML", page); self.assertIn("textContent", page)
 
 if __name__ == "__main__": unittest.main(verbosity=1)

@@ -14,6 +14,7 @@ runtime.json
 usage.json
 qa_sessions.json
 audit.jsonl
+denials.jsonl
 bot.log
 *.log
 drafts/

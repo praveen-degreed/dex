@@ -15,10 +15,10 @@
     dexctl claude show                     which Claude account each kind of run uses (foundry | subscription | your own profile)
     dexctl claude check <profile>          is that profile usable: runs `claude auth status` with its environment
     dexctl claude use <review|question|router|all> <profile>   switch (back to foundry with `foundry`); takes effect on the next run
-    dexctl serve [--port 8787]             a read-only dashboard on http://127.0.0.1:<port>
+    dexctl serve [--port 8787]             the Dex page on http://127.0.0.1:<port> (status, stop, run, restart, settings)
 
 It reads the files Dex writes (runtime.json, usage.json, audit.jsonl, policy.json) and edits only policy.json, which
-Dex picks up without a restart. It never talks to the running process.
+Dex picks up without a restart. It never talks to the running process (the page's stop / run / restart do, see control.py).
 """
 import argparse
 import collections

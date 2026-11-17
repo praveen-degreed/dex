@@ -68,6 +68,21 @@ def split_verdict(text):
     return verdict, VERDICT_LINE.sub("", text).rstrip()
 
 
+SERIOUS = re.compile(r"\b(push|merge|rm|curl|wget|ssh|scp|sudo|chmod|chown|kill|docker|kubectl|az|aws|npm|pip|python3?|pytest|dotnet|node|git\s+(-C\s+\S+\s+)?(commit|checkout|reset|clean))\b|[^=<-]>\s*\S")
+
+
+def serious_denials(denials):
+    """The denied calls that are worth telling the owner about: anything that writes, publishes, runs PR code or reaches out.
+    A harmless read the allowlist did not cover (ls, sed -n, a sibling repo lookup) is only counted and logged."""
+    out = []
+    for d in denials:
+        inp = d.get("tool_input") or {}
+        text = str(inp.get("command") or "")
+        if d.get("tool_name") == "Bash" and SERIOUS.search(text):
+            out.append(d)
+    return out
+
+
 def count_agent_calls(raw):
     """How many review agents the orchestrator launched, from the saved event log (None if there is no log)."""
     try:
@@ -93,7 +108,7 @@ def _n(n):
     return f"{n / 1e6:.2f}M" if n >= 1e6 else (f"{n / 1e3:.0f}K" if n >= 1e3 else str(int(n)))
 
 
-def usage_line(key, cost, agents, started, profile):
+def usage_line(key, cost, agents, started, profile, denied=0):
     """One line for the end of a review: tokens, cost, agents, time and the account it ran on ('' if nothing was used)."""
     t = job_tokens(key)
     fresh, cached, out = t.get("fresh", 0), t.get("cache_read", 0), t.get("output", 0)
@@ -108,6 +123,8 @@ def usage_line(key, cost, agents, started, profile):
         parts.append(f"{agents} agent{'s' if agents != 1 else ''}")
     parts.append(f"{mins // 60}m {mins % 60:02d}s" if mins >= 60 else f"{mins}s")
     parts.append(f"account: {account}")
+    if denied:
+        parts.append(f"{denied} tool call{'s' if denied != 1 else ''} blocked by safety rules")
     return "\n_Usage: " + " · ".join(parts) + "_"
 
 
@@ -168,7 +185,7 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
     if not ok:
         state.release(key)
         return su.reply(channel, thread_ts, why)
-    state.new_job(key, url=url, sha=sha, repo=repo, user=user)
+    state.new_job(key, url=url, sha=sha, repo=repo, user=user, channel=channel, thread=thread_ts)
     with state.lock:
         state.threads[(channel, thread_ts)] = key
     pool.submit(review, url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, info["is_fork"])
@@ -208,7 +225,8 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp),
              "--output-format", "stream-json", "--verbose",
              "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied]
-            + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else []),
+            + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else [])
+            + ["--add-dir", str(tmp)],  # the run's own private temp dir (the fetch dir lives there) is readable and listable
             wt, env,
             raw, err, key=key, stop_key=(channel, thread_ts),
         )
@@ -245,11 +263,17 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
                 inp = d.get("tool_input") or {}
                 return f"- {d.get('tool_name')}: {str(inp.get('command') or inp.get('file_path') or inp)[:160]}"
             log.warning("%d tool call(s) denied for %s", len(denials), key)
-            su.dm(config.OWNER, f"Review of {url}: {len(denials)} tool call(s) were denied by the bot's permission rules:\n"
-                  + "\n".join(shown(d) for d in denials[:8]))
+            with open(config.DATA / "denials.jsonl", "a") as f:  # every denial, for adjusting the allowlist in one batch
+                for d in denials:
+                    f.write(json.dumps({"ts": datetime.datetime.now().isoformat(timespec="seconds"), "pr": url, "tool": d.get("tool_name"),
+                                        "input": str((d.get("tool_input") or {}).get("command") or (d.get("tool_input") or {}))[:300]}) + "\n")
+            serious = serious_denials(denials)
+            if serious:
+                su.dm(config.OWNER, f"Review of {url}: {len(serious)} risky tool call(s) were blocked (of {len(denials)} blocked in total):\n"
+                      + "\n".join(shown(d) for d in serious[:8]))
         agents = count_agent_calls(raw)
         no_agents = agents == 0 and skill_verdict != "skip"  # a deliberate skip (draft, closed, ...) is not a shortcut
-        usage = usage_line(key, cost, agents, started, profile)
+        usage = usage_line(key, cost, agents, started, profile, len(denials))
         if no_agents:
             log.warning("review of %s ran no review agents", key)
             su.dm(config.OWNER, f"Review of {url} ran NO review agents: the skill reviewed alone. Treat it as a quick read. "

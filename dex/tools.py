@@ -22,7 +22,7 @@ REVIEW_READ = [
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
     # Read-only helpers the skills chain with the commands above (`cd x && script`, `ls | head`). A chained call is allowed
     # only when every part matches a rule, and paths must stay inside the run's directory (verified: tests/check_permissions.py).
-    "Bash(cd:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)", "Bash(pwd)",
+    "Bash(cd:*)", "Bash(ls:*)", "Bash(head:*)", "Bash(tail:*)", "Bash(wc:*)", "Bash(pwd)", "Bash(grep *)", "Bash(rg *)", "Bash(jira issue view *)",
 ]
 REVIEW_POST = ["Bash(gh pr review:*)", "Bash(gh pr comment:*)"]  # added only when the skill may post
 REVIEW_DENIED = ["Bash(gh pr merge:*)", "Bash(git push:*)", "Bash(git commit:*)", "Bash(git -C * push *)", "Bash(git -C * commit *)", "Bash(git -C * checkout *)", "Bash(git -C * reset *)", "Bash(*/../*)"]  # last: no path climbing out of the scripts dirs

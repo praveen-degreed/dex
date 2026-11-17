@@ -28,6 +28,10 @@ cases += [
     ("git -C <dir> commit is blocked", "git -C sub commit -m x", NO),
     ("git -C <dir> checkout is blocked", "git -C sub checkout main", NO),
     ("git -C <dir> reset is blocked", "git -C sub reset --hard", NO),
+    ("ls the run's own temp dir", f"ls {work}/tmp", OK),
+    ("grep (read-only)", "grep -rn foo sub", OK),
+    ("jira issue view (read-only)", "jira issue view PD-1 --plain", OK),
+    ("jira issue create is blocked", "jira issue create -s x", NO),
     ("chain: cd && ls | head", "cd sub && ls | head -3", OK),
     ("chain: script after cd", f"cd sub && {_SKILLS}/review-prs/scripts/verify-citations.sh . a/b.ts:1", OK),
     ("post with --body-file", f"gh pr review 1 --repo zz-none-org/none --comment --body-file {work}/tmp/review-body.md", OK),
@@ -46,7 +50,7 @@ def run(case):
     out = subprocess.run(
         ["claude", "-p", f"Call the Bash tool once with exactly this command and nothing added (no echo, no chaining), then say done: {cmd}",
          "--model", "haiku", "--output-format", "json", "--permission-mode", "dontAsk",
-         "--allowedTools", allowed, "--disallowedTools", denied],  # one string each, exactly as reviews.py passes them
+         "--allowedTools", allowed, "--disallowedTools", denied, "--add-dir", str(work / "tmp")],  # exactly as reviews.py passes them
         cwd=work, capture_output=True, text=True, timeout=180).stdout
     try:
         d = json.loads(out)
