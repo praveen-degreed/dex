@@ -146,10 +146,6 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
         services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_size", files=info.get("files"))
         return su.reply(channel, thread_ts, f"{url} changes {info['files']} files, and reviews are limited to {cap} files right now because big reviews are expensive. The owner can override this.")
 
-    if cfg.get("dex_posts") and info.get("is_draft") and not (force and user == config.OWNER):  # a draft is not ready for review, and Dex would post on it
-        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="refused_draft")
-        return su.reply(channel, thread_ts, f"{url} is a draft, so I don't review it (a review would land on a PR its author has not asked anyone to look at). "
-                                            "Mark it ready for review and ask again. The owner can force it.")
     if cfg.get("maestro_skill") or cfg.get("dex_posts"):  # repos whose skills live in the repo itself
         try:
             paths = github.pr_paths(url)

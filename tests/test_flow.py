@@ -171,12 +171,9 @@ class DotNetRepo(StartReview):
         self.go(U4626); self.paths.assert_not_called(); self.assertEqual(self.pool.submit.call_args[0][6], config.REPOS[FE])
 
 class DraftPr(DotNetRepo):
-    def test_a_draft_is_refused_for_repos_where_dex_posts_unless_the_owner_forces_it(self):
+    def test_a_draft_is_reviewed_like_any_other_pr(self):
         self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "is_draft": True}; self.paths.return_value = ["trunk/a.cs"]; self.go(UNET)
-        self.assertIn("is a draft", self.slack.texts()[0]); self.pool.submit.assert_not_called(); self.assertNotIn(f"{NET}#57415@{'a' * 40}", state.seen)
-        self.go(UNET, user=OWNER, force=True); self.pool.submit.assert_called_once()
-    def test_other_repos_are_not_affected_by_the_draft_rule(self):
-        self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "is_draft": True}; self.go(U4626); self.pool.submit.assert_called_once()
+        self.pool.submit.assert_called_once(); self.assertNotIn("draft", " ".join(self.slack.texts()).lower().replace("review started", ""))
 
 class SizeGuard(StartReview):
     def test_big_prs_are_refused_unless_the_owner_forces(self):
