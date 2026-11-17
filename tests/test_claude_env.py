@@ -72,6 +72,9 @@ class Switch(unittest.TestCase):
     def test_an_old_blanket_string_setting_is_expanded_not_lost(self):
         (DATA / "policy.json").write_text(json.dumps({"claude_profile": "subscription"})); run("claude", "use", "question", "foundry")
         self.assertEqual(self.pol()["claude_profile"], {"review": "subscription", "router": "subscription"})
+    def test_the_two_shortcuts(self):
+        rc, out, _ = run("subscription"); self.assertEqual(rc, 0); self.assertEqual(self.pol()["claude_profile"], {"review": "subscription"}); self.assertIn("review=subscription, question=foundry", out)
+        run("claude", "use", "question", "subscription"); rc, out, _ = run("foundry"); self.assertEqual(rc, 0); self.assertNotIn("claude_profile", self.pol()); self.assertIn("review=foundry, question=foundry, router=foundry", out)
     def test_check_reports_a_profile_that_cannot_be_used(self):
         (DATA / "claude_profiles.json").write_text(json.dumps({"subscription": {"config_dir": "/no/such/dir"}}))
         rc, out, _ = run("claude", "check", "subscription"); self.assertEqual(rc, 1); self.assertIn("not usable", out)

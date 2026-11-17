@@ -10,6 +10,8 @@
     dexctl cap daily-usd <amount|off>      the whole bot's spend per day
     dexctl cap user-usd <role> <amount|off>
     dexctl cap pr-files <n|off>            refuse reviews of PRs with more changed files
+    dexctl foundry                         shortcut: everything back on Azure Foundry (the default)
+    dexctl subscription                    shortcut: reviews on the Claude subscription (questions and the router stay as they are)
     dexctl claude show                     which Claude account each kind of run uses (foundry | subscription | your own profile)
     dexctl claude check <profile>          is that profile usable: runs `claude auth status` with its environment
     dexctl claude use <review|question|router|all> <profile>   switch (back to foundry with `foundry`); takes effect on the next run
@@ -294,6 +296,7 @@ def build_parser():
     d = cs.add_parser("daily-usd"); d.add_argument("target")
     r = cs.add_parser("user-usd"); r.add_argument("target"); r.add_argument("value")
     p = cs.add_parser("pr-files"); p.add_argument("target")
+    sub.add_parser("foundry"); sub.add_parser("subscription")
     cl = sub.add_parser("claude"); cls = cl.add_subparsers(dest="what", required=True)
     cls.add_parser("show"); cls.add_parser("check").add_argument("profile")
     cu = cls.add_parser("use"); cu.add_argument("target"); cu.add_argument("profile")
@@ -303,6 +306,8 @@ def build_parser():
 
 def main(argv=None):
     a = build_parser().parse_args(argv)
+    if a.cmd in ("foundry", "subscription"):  # shortcuts for `claude use ...`
+        a.what, a.target, a.profile, a.cmd = "use", ("all" if a.cmd == "foundry" else "review"), a.cmd, "claude"
     handlers = {"status": cmd_status, "usage": cmd_usage, "top": cmd_top, "show": cmd_show, "serve": cmd_serve, "claude": cmd_claude}
     try:
         return handlers[a.cmd](a) if a.cmd in handlers else cmd_change(a)

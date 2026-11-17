@@ -61,6 +61,8 @@ bin/dexctl claude show                       which account each kind of run uses
 bin/dexctl claude check subscription         is that account usable (runs `claude auth status` with its environment)
 bin/dexctl claude use review subscription    reviews on the subscription; question / router / all work too
 bin/dexctl claude use all foundry            everything back on Azure Foundry (the default)
+bin/dexctl subscription                      shortcut: reviews on the subscription (questions and router unchanged)
+bin/dexctl foundry                           shortcut: everything back on Azure Foundry
 ```
 **One-time setup for the subscription profile** (Dex never logs in for you):
 1. `! CLAUDE_CONFIG_DIR=~/.claude-subscription claude` then `/login` with the personal account (the default folder; change it in `claude_profiles.json`).
