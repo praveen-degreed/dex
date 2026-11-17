@@ -39,8 +39,7 @@ def prompt(skill, url, sha, post, tmp=None):
         "it does not mean CI could not be read. This run only allows single, simple commands: issue one command per Bash "
         "call, never chain with ; && || or pipes, and never use cd, shell variables, ~ or ls. Call the skill's scripts by "
         "their full absolute path (not ~/...); they find the repos themselves. A chained or non-matching call is denied "
-        "as a whole. Run the skill's full review pipeline exactly as written, whatever the PR size: do not replace it with a "
-        "quicker review of your own, and do not skip agents to save cost. Without the full pipeline you may not approve.\n\n"
+        "as a whole.\n\n"
         f"Reviewer's standing lessons:\n{lessons}"
     )
 
