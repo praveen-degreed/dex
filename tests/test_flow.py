@@ -87,7 +87,7 @@ class Routing(Base):
         state.pending_big[("C1", "T")] = [{"url": U4626, "user": "U1", "msg_ts": "1.1", "at": time.time(), "size": "137 files"}]
     def test_the_answer_proceed_reviews_it_fully_without_a_mention_and_decline_drops_it(self):
         self.pend(); self.verdict = V("proceed"); handlers.handle(ev(type_="message", text="no it cannot be split, go ahead", ts="2.2", thread_ts="T"))
-        self.start_review.assert_called_once(); self.assertTrue(self.start_review.call_args[1]["confirmed"]); self.assertNotIn(("C1", "T"), state.pending_big); self.assertTrue(self.router_calls[-1][1]["thread"]["pending_confirmation"])
+        self.start_review.assert_called_once(); self.assertTrue(self.start_review.call_args[1]["confirmed"]); self.assertTrue(self.start_review.call_args[1]["force"], "an earlier refusal is not an earlier review"); self.assertNotIn(("C1", "T"), state.pending_big); self.assertTrue(self.router_calls[-1][1]["thread"]["pending_confirmation"])
         self.start_review.reset_mock(); self.pend(); self.verdict = V("decline"); handlers.handle(ev(type_="message", text="ok I will split it", ts="2.3", thread_ts="T"))
         self.start_review.assert_not_called(); self.assertIn("I won't review it", self.slack.texts()[-1]); self.assertNotIn(("C1", "T"), state.pending_big)
     def test_only_the_requester_or_the_owner_can_answer_and_an_old_question_is_forgotten(self):
@@ -189,11 +189,21 @@ class BigPr(StartReview):
     def test_small_prs_and_the_owner_force_are_not_asked(self):
         self.big(files=20, adds=500, dels=100); self.go(); self.pool.submit.assert_called_once()
         self.pool.reset_mock(); state.seen.clear(); state.inflight.clear(); self.big(); self.go(user=OWNER, force=True); self.pool.submit.assert_called_once()
+        self.assertTrue(self.pool.submit.call_args[0][6]["confirmed_big"], "the owner forcing a big PR means: review it fully, do not stop at the skill's own limit")
+        self.pool.reset_mock(); state.seen.clear(); state.inflight.clear(); self.big(files=20, adds=500, dels=100); self.go(user=OWNER, force=True); self.assertNotIn("confirmed_big", self.pool.submit.call_args[0][6], "a small PR is not marked")
     def test_many_lines_in_few_files_also_counts_and_the_limits_are_configurable(self):
         self.big(files=10, adds=2500, dels=900); self.go(); self.pool.submit.assert_not_called(); self.assertIn("is big", self.slack.texts()[0])
         self.set_policy({"big_pr": {"files": 200, "lines": 20000}}); self.slack.posts.clear(); state.pending_big.clear(); self.big(); self.go(); self.pool.submit.assert_called_once()
     def test_confirmed_starts_the_review_and_marks_it_so_the_skill_does_not_stop_to_ask_for_a_split(self):
         self.big(); self.go(); reviews.start_review("C1", "T", "M", "U1", re.search(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)", U4626), False, confirmed=True)
+        self.pool.submit.assert_called_once(); self.assertTrue(self.pool.submit.call_args[0][6]["confirmed_big"])
+
+class AlreadyAskedAboutBig(BigPr):
+    def test_answering_proceed_still_runs_when_the_pr_was_already_stopped_or_reviewed_at_that_commit(self):
+        self.big(); state.seen.add(f"{FE}#4626@{'a' * 40}")  # an earlier run stopped at the size limit
+        self.go(); self.assertIn("is big", self.slack.texts()[0]); self.pool.submit.assert_not_called()
+        self.go(); self.assertNotIn("Already reviewed", " ".join(self.slack.texts()[:1]))  # (the question comes before the 'already reviewed' check)
+        reviews.start_review("C1", "T", "M", "U1", re.search(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)", U4626), True, confirmed=True)
         self.pool.submit.assert_called_once(); self.assertTrue(self.pool.submit.call_args[0][6]["confirmed_big"])
 
 class UsageLimitGuard(StartReview):

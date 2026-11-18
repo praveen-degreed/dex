@@ -179,7 +179,10 @@ def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False
         cfg = {**cfg, "skill": choose_skill(cfg, paths)}
     files_lim, lines_lim = services.policy.big_pr()
     changed = info.get("additions", 0) + info.get("deletions", 0)
-    if not confirmed and not (force and user == config.OWNER) and ((files_lim and info.get("files", 0) > files_lim) or (lines_lim and changed > lines_lim)):
+    is_big = bool((files_lim and info.get("files", 0) > files_lim) or (lines_lim and changed > lines_lim))
+    if is_big and force and user == config.OWNER:
+        confirmed = True  # the owner forcing a big PR is the answer to the question: review it fully
+    if is_big and not confirmed:
         size = f"{info.get('files', 0)} files, +{info.get('additions', 0)}/-{info.get('deletions', 0)} lines"
         with state.lock:
             state.pending_big.setdefault((channel, thread_ts), []).append({"url": url, "user": user, "msg_ts": msg_ts, "at": time.time(), "size": size})
@@ -188,7 +191,7 @@ def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False
                                             "often costs several dollars and takes 10+ minutes, and an agent can only hold so much of it in mind. "
                                             "Can it be split? If so, send me the smaller PRs. If it can't be split (for example it is tested as one piece), "
                                             "just tell me and I'll review it fully.")
-    if confirmed:
+    if confirmed and is_big:
         cfg = {**cfg, "confirmed_big": True}  # the requester said it cannot be split: review it fully, even above the skill's own size limit
     profile = claude_env.profile_name(services.policy, "review")
     hit = limit_active(profile)

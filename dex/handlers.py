@@ -171,7 +171,7 @@ def handle(event):
             if intent == "decline":
                 return su.reply(channel, thread_ts, "OK, I won't review it. Send me the smaller PRs when they are ready.")
             for p in pend:  # the requester said it cannot be split: review it fully
-                reviews.start_review(channel, thread_ts, p["msg_ts"], p["user"], PR_URL.search(p["url"]), force=False, confirmed=True)
+                reviews.start_review(channel, thread_ts, p["msg_ts"], p["user"], PR_URL.search(p["url"]), force=True, confirmed=True)  # force: an earlier refusal to review it must not count as "already reviewed"
             return
         intent = "agent"  # nothing was asked here (or someone else answered): treat it as a normal message
     if intent == "review":
