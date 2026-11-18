@@ -33,7 +33,7 @@ def choose_skill(cfg, paths):
     return cfg["skill"]
 
 
-def prompt(skill, url, sha, post, tmp=None):
+def prompt(skill, url, sha, post, tmp=None, confirmed_big=False):
     lessons = config.LESSONS.read_text() if config.LESSONS.exists() else ""
     if post:
         mode = ("Post your review to the PR yourself, exactly as the skill normally does. The requester tagged the "
@@ -50,6 +50,8 @@ def prompt(skill, url, sha, post, tmp=None):
     return (
         f"{head}\n\n"
         f"The PR head is pinned at {sha}; review exactly that commit. {mode} "
+        + ("The requester confirmed this PR cannot be split: review it fully, even above the skill's own size or unit limit, and do not stop to ask the author to split it. " if confirmed_big else "")
+        + 
         "Note: checks.txt from fetch-pr.sh lists only FAILING checks; an empty file means no check is failing, "
         "it does not mean CI could not be read. This run only allows single, simple commands: issue one command per Bash "
         "call, never chain with ; && || or pipes, and never use cd, shell variables, ~ or ls. Call the skill's scripts by "
@@ -145,7 +147,7 @@ def job_tokens(key):
         return dict((state.jobs.get(key) or {}).get("tokens") or {})
 
 
-def start_review(channel, thread_ts, msg_ts, user, match, force):
+def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False):
     """Validate the PR, claim it, count the request against the user's limits, and queue the review."""
     url, repo, number = canonical(match), match.group(1).lower(), match.group(2)  # always the https form (Slack shows http:// links)
     cfg = config.REPOS.get(repo)
@@ -175,6 +177,19 @@ def start_review(channel, thread_ts, msg_ts, user, match, force):
             return su.reply(channel, thread_ts, f"{url} changes files under `.claude/` (skills, agents or hooks). This repo's review skills come from the PR "
                                                 "itself, so a PR could rewrite its own reviewer; I won't run them. The owner can force it, or review it by hand.")
         cfg = {**cfg, "skill": choose_skill(cfg, paths)}
+    files_lim, lines_lim = services.policy.big_pr()
+    changed = info.get("additions", 0) + info.get("deletions", 0)
+    if not confirmed and not (force and user == config.OWNER) and ((files_lim and info.get("files", 0) > files_lim) or (lines_lim and changed > lines_lim)):
+        size = f"{info.get('files', 0)} files, +{info.get('additions', 0)}/-{info.get('deletions', 0)} lines"
+        with state.lock:
+            state.pending_big.setdefault((channel, thread_ts), []).append({"url": url, "user": user, "msg_ts": msg_ts, "at": time.time(), "size": size})
+        services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, decision="asked_big", files=info.get("files", 0))
+        return su.reply(channel, thread_ts, f"<@{user}> {url} is big ({size}). A smaller PR gets a better review and uses far fewer tokens: a review this size "
+                                            "often costs several dollars and takes 10+ minutes, and an agent can only hold so much of it in mind. "
+                                            "Can it be split? If so, send me the smaller PRs. If it can't be split (for example it is tested as one piece), "
+                                            "just tell me and I'll review it fully.")
+    if confirmed:
+        cfg = {**cfg, "confirmed_big": True}  # the requester said it cannot be split: review it fully, even above the skill's own size limit
     profile = claude_env.profile_name(services.policy, "review")
     hit = limit_active(profile)
     if hit and not (force and user == config.OWNER):
@@ -230,7 +245,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         subprocess.run(["git", "-C", clone, "worktree", "add", "--detach", str(wt), sha], check=True, capture_output=True)
         env = claude_env.env_for(services.policy, "review", {"TMPDIR": f"{tmp}/"})  # trailing slash: fetch-pr.sh concatenates names onto it
         result = run_claude(
-            ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp),
+            ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp, bool(cfg.get("confirmed_big"))),
              "--output-format", "stream-json", "--verbose",
              "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied]
             + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else [])

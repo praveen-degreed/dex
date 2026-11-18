@@ -10,6 +10,7 @@
     dexctl cap daily-usd <amount|off>      the whole bot's spend per day
     dexctl cap user-usd <role> <amount|off>
     dexctl cap pr-files <n|off>            refuse reviews of PRs with more changed files
+    dexctl cap big-pr <files> [lines]|off|default   a PR above either is asked about first (can it be split?); default 50 files / 3000 lines
     dexctl foundry                         shortcut: everything back on Azure Foundry (the default)
     dexctl subscription                    shortcut: reviews on the Claude subscription (questions and the router stay as they are)
     dexctl claude show                     which Claude account each kind of run uses (foundry | subscription | your own profile)
@@ -146,6 +147,8 @@ def cmd_show(a):
     cfg = load_json(POLICY, {})
     print(f"paused: {bool(cfg.get('paused'))}\ndisabled: {', '.join(cfg.get('disabled') or []) or 'none'}")
     print(f"caps: {caps_line({'max_job_usd': cfg.get('max_job_usd'), 'max_pr_files': cfg.get('max_pr_files'), 'global': cfg.get('global')})}")
+    bp = cfg.get("big_pr") if isinstance(cfg.get("big_pr"), dict) else {}
+    print(f"asks before reviewing a PR over: {bp.get('files', 50) or 'no'} files / {bp.get('lines', 3000) or 'no'} changed lines")
     print(_profiles_text(cfg).splitlines()[0])
     print(f"policy file: {POLICY}" + ("" if POLICY.exists() else " (does not exist: everything allowed, unlimited)"))
     return 0
@@ -202,6 +205,14 @@ def cmd_change(a):
                 _set(cfg, ["global", "daily_usd"], _amount(a.target))
             elif a.what == "user-usd":
                 _set(cfg, ["roles", a.target, "daily_usd"], _amount(a.value))
+            elif a.what == "big-pr":
+                if a.target == "default":
+                    cfg.pop("big_pr", None)
+                elif a.target == "off":
+                    cfg["big_pr"] = {"files": 0, "lines": 0}
+                else:
+                    cur = cfg.get("big_pr") if isinstance(cfg.get("big_pr"), dict) else {}
+                    cfg["big_pr"] = {"files": int(a.target), "lines": int(a.value) if a.value else cur.get("lines", 3000)}
             elif a.what == "pr-files":
                 v = _amount(a.target)
                 _set(cfg, ["max_pr_files"], None if v is None else int(v))
@@ -296,6 +307,7 @@ def build_parser():
     d = cs.add_parser("daily-usd"); d.add_argument("target")
     r = cs.add_parser("user-usd"); r.add_argument("target"); r.add_argument("value")
     p = cs.add_parser("pr-files"); p.add_argument("target")
+    b = cs.add_parser("big-pr"); b.add_argument("target"); b.add_argument("value", nargs="?")
     sub.add_parser("foundry"); sub.add_parser("subscription")
     cl = sub.add_parser("claude"); cls = cl.add_subparsers(dest="what", required=True)
     cls.add_parser("show"); cls.add_parser("check").add_argument("profile")

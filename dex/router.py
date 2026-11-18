@@ -16,7 +16,7 @@ from . import claude_env
 
 log = logging.getLogger("dex.router")
 
-INTENTS = ["review", "status", "stop", "usage", "control", "agent", "ignore"]
+INTENTS = ["review", "status", "stop", "usage", "control", "proceed", "decline", "agent", "ignore"]
 ACTIONS = ["", "pause", "resume", "show"]
 
 SYSTEM = """You are the first-stage router for {name}, a Slack bot that has an AI assistant (code, git history and GitHub
@@ -39,6 +39,9 @@ Pick a fixed action ONLY when the message clearly asks for exactly that. Anythin
 - control: someone asks to pause or resume the whole bot ("pause everything", "we're burning tokens, stop taking new work",
   "resume") or to see what is switched off. Set action to pause, resume or show. This is different from `stop`, which
   stops one running job in this thread.
+- proceed / decline: ONLY when context.thread.pending_confirmation is true (the bot asked "can this big PR be split?"). proceed = the
+  user answers that it cannot be split / should be reviewed as it is / go ahead. decline = they will split it, or do not want it reviewed
+  now. Anything else in that thread (a question, a different request) is agent. Without a pending question these are never used.
 - agent: EVERYTHING ELSE meant for the bot. Questions about code, history, reasoning, PRs, CI, people's work
   ("what is Shubham doing?"), estimates of what a fix would take, requests the bot cannot do (it will explain),
   what the bot can do, answers to a question the assistant just asked, small talk with the bot.

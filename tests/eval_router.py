@@ -9,12 +9,13 @@ from dex import router
 U4626 = "https://github.com/degreed/fe-workspace/pull/4626"
 U4460 = "https://github.com/degreed/fe-workspace/pull/4460"
 LAST = "helpers.ts:92 was last changed by Alice in commit abc1234 (Fix route snapshot null), PR #4201."
+ASKBIG = "https://github.com/degreed/fe-workspace/pull/4509 is big (137 files). Can it be split? If it can't be split, just tell me and I'll review it fully."
 ASK = "Which repo do you mean, the frontend (fe-workspace) or the backend (degreed-coach-builder)?"
 
-def ctx(bot=False, owner=False, urls=(), review=None, convo=False, parent=None, last_bot=None, jobs=()):
+def ctx(bot=False, owner=False, urls=(), review=None, convo=False, parent=None, last_bot=None, jobs=(), pending=False):
     return {"mentions_bot": bot, "mentions_owner": owner, "pr_urls_in_message": list(urls), "known_review_jobs": list(jobs),
             "thread": {"is_review_thread": review is not None, "review_status": review or "none",
-                       "has_conversation": convo, "parent_pr_url": parent, "last_bot_message": last_bot}}
+                       "has_conversation": convo, "parent_pr_url": parent, "last_bot_message": last_bot, "pending_confirmation": pending}}
 
 # (name, text, ctx, acceptable intents, directed_at_bot expected or None, extra check)
 CASES = [
@@ -27,6 +28,12 @@ CASES = [
     ("review: 'review it' in a thread whose parent is a PR link", "review it", ctx(parent=U4626), {"review"}, True, None),
     ("review: several bare PR links to the bot", "<@BOT> " + " ".join(f"https://github.com/degreed/fe-workspace/pull/{n}" for n in (4710, 4711, 4712)) + " https://github.com/degreed/degreed-assistant/pull/473",
      ctx(bot=True, urls=[f"https://github.com/degreed/fe-workspace/pull/{n}" for n in (4710, 4711, 4712)] + ["https://github.com/degreed/degreed-assistant/pull/473"]), {"review"}, True, None),
+    ("proceed: it cannot be split, go ahead", "no it cannot be split, it is tested together. go ahead and review it", ctx(pending=True, last_bot=ASKBIG), {"proceed"}, True, None),
+    ("proceed: just 'review as is'", "review it as is", ctx(pending=True, last_bot=ASKBIG), {"proceed"}, True, None),
+    ("decline: I will split it", "ok I will split it into three and send them", ctx(pending=True, last_bot=ASKBIG), {"decline"}, True, None),
+    ("decline: not now", "dont review this now", ctx(pending=True, last_bot=ASKBIG), {"decline"}, True, None),
+    ("agent: a different question while a big-PR question is pending", "who wrote the Maestro results page?", ctx(pending=True, last_bot=ASKBIG), {"agent"}, True, None),
+    ("no pending question: 'go ahead' is not proceed", "<@BOT> go ahead", ctx(bot=True), {"agent"}, True, None),
     ("status: plain", "<@BOT> status", ctx(bot=True), {"status"}, True, None),
     ("status: in thread, no mention", "any update?", ctx(review="running"), {"status"}, True, None),
     ("status: phrased without keywords", "how's the review looking so far?", ctx(review="running"), {"status"}, True, None),

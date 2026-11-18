@@ -97,6 +97,20 @@ class Policy:
             v = v.get(kind) or v.get("all")
         return v if isinstance(v, str) and v else "foundry"
 
+    def big_pr(self):
+        """(files, lines): a PR above either is 'big': Dex asks whether it can be split before spending on it. Defaults 50 files /
+        3000 changed lines; policy.json `big_pr` {"files": n, "lines": n} changes them, 0 turns one off."""
+        v = self.cfg.get("big_pr")
+        v = v if isinstance(v, dict) else {}
+
+        def lim(key, default):
+            x = v.get(key, default)
+            try:
+                return int(x) if x else None
+            except (TypeError, ValueError):
+                return default
+        return lim("files", 50), lim("lines", 3000)
+
     def max_pr_files(self):
         try:
             return int(self.cfg.get("max_pr_files")) or None

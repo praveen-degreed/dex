@@ -94,6 +94,15 @@ The thread reply ends with a usage line: total tokens (new, cached, output), cos
 labelled an API-equivalent estimate (you are not billed per token). The account is read when the review starts, so a switch during a run does not
 change what is reported; the audit log records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
 
+## Big PRs: Dex asks first
+A PR above 50 files or 3000 changed lines is **not run straight away**. Dex replies in the thread, tagging the requester: the PR is big, a smaller PR
+gets a better review and uses far fewer tokens, can it be split? If it can, the requester sends the smaller PRs. If it can't (for example it is tested
+as one piece), the requester just says so in the thread (no mention of Dex needed; an LLM reads the answer, not a keyword) and Dex reviews it **fully**:
+the prompt tells the skill the PR cannot be split, so the FE skill reviews every unit instead of stopping at its 12-unit limit. "I'll split it" or
+"not now" drops the request. Only the requester or the owner can answer, and an unanswered question is forgotten after a day. The owner's `force`
+skips the question. Change the limits with `bin/dexctl cap big-pr <files> [lines]`, `off` or `default` (`dexctl show` prints them). A fully reviewed
+huge PR is expensive; `dexctl cap job-usd review N` still caps one review.
+
 ## When the Claude account reaches its usage limit
 If a run fails because the account behind it (Azure Foundry or the personal plan) hit its usage or rate limit, Dex says so instead of a generic
 "failed": the thread reply tags the requester ("the personal Claude plan has reached its usage limit, it resets around HH:MM, send it again after the

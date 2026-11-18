@@ -18,6 +18,7 @@ handled = set()       # (channel, ts) of events already acted on, so message + a
 procs = {}            # (channel, thread_ts) -> running claude subprocess, so `stop` can kill it
 stopped = set()       # (channel, thread_ts) whose process was killed on purpose
 cancelled = set()     # review keys cancelled while still queued
+pending_big = {}      # (channel, thread) -> [{url, user, msg_ts, at, size}]: big PRs I asked 'can it be split?' about
 awaiting_link = set()  # (channel, thread) where I asked 'which PR?': the next message there may be just the link
 limit_hits = {}       # Claude profile -> (when it was hit (time.time()), when it resets (datetime or None), raw text)
 qa_active = {}        # (channel, thread_ts) -> start time of a running answer

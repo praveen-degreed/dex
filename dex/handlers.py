@@ -14,7 +14,8 @@ log = logging.getLogger("dex")
 STATUS_WORDS = re.compile(r"\b(status|progress|updates?|eta|how long|done yet|finished yet|what'?s (happening|going on))\b", re.I)
 FORCE = re.compile(r"\bforce\b", re.I)
 
-CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage", "control": "usage"}
+CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage", "control": "usage", "proceed": "status", "decline": "status"}
+PENDING_TTL_S = 24 * 3600  # a big-PR question nobody answered is dropped after a day
 MAX_LINKS = int(__import__("os").environ.get("MAX_LINKS_PER_MESSAGE", "5"))  # PRs reviewed per message
 LOW_CONFIDENCE = 0.5  # below this the router is guessing: hand the message to the assistant, which can ask
 
@@ -59,6 +60,17 @@ def do_stop(channel, thread_ts):
     return su.reply(channel, thread_ts, "Nothing is running in this thread.")
 
 
+def pending_for(channel, thread):
+    """The big-PR questions still waiting for an answer in this thread (older than a day are forgotten)."""
+    with state.lock:
+        items = [p for p in state.pending_big.get((channel, thread), []) if time.time() - p["at"] < PENDING_TTL_S]
+        if items:
+            state.pending_big[(channel, thread)] = items
+        else:
+            state.pending_big.pop((channel, thread), None)
+    return items
+
+
 def known_jobs(text):
     """Reviews the bot has (or had) for the PR links in a message, so the router can tell a status question about
     one of them from a question about some other PR."""
@@ -85,7 +97,7 @@ def do_control(channel, thread_ts, user, action):
     return su.reply(channel, thread_ts, switches_text() + (" Use `dexctl` for the other switches." if action != "pause" else " Say `resume` to start again."))
 
 
-def build_context(text, mentions_bot, mentions_owner, review_key, session, info):
+def build_context(text, mentions_bot, mentions_owner, review_key, session, info, pending=False):
     with state.lock:
         job = state.jobs.get(review_key) if review_key else None
     return {
@@ -97,6 +109,7 @@ def build_context(text, mentions_bot, mentions_owner, review_key, session, info)
             "has_conversation": bool(session),
             "parent_pr_url": (lambda m: canonical(m) if m else None)(PR_URL.search(info.get("parent_text", ""))),
             "last_bot_message": info.get("last_bot"),
+            "pending_confirmation": pending,
         },
     }
 
@@ -114,7 +127,7 @@ def handle(event):
     mentions_owner = f"<@{config.OWNER}>" in text
     review_key = state.threads.get((channel, root)) if root else None
     session = services.sessions.get(channel, root) if root else None
-    tracked = bool(review_key or session or (channel, root) in state.awaiting_link)  # a thread where I asked for a PR link
+    tracked = bool(review_key or session or (channel, root) in state.awaiting_link or pending_for(channel, root))  # a thread where I asked something
 
     # Structural checks only (not intent): is this message for the bot at all?
     if not (mentions_bot or mentions_owner or tracked):
@@ -130,7 +143,7 @@ def handle(event):
     info = su.thread_info(channel, root) if root else {"parent_text": "", "last_bot": None}
     verdict, via = None, "router"
     if services.policy.router_call_allowed():
-        verdict = router.classify(text, build_context(text, mentions_bot, mentions_owner, review_key, session, info), policy=services.policy)
+        verdict = router.classify(text, build_context(text, mentions_bot, mentions_owner, review_key, session, info, bool(root and pending_for(channel, root))), policy=services.policy)
     if verdict is None:
         verdict, via = fallback_verdict(text, mentions_bot or mentions_owner, tracked), "rules"
     else:
@@ -150,6 +163,17 @@ def handle(event):
         services.policy.audit(user=user, capability=CAPABILITY[intent], channel=channel, thread=thread_ts, decision="denied")
         return su.reply(channel, thread_ts, why)
 
+    if intent in ("proceed", "decline"):
+        pend = pending_for(channel, thread_ts)
+        if pend and (user == config.OWNER or user in {p["user"] for p in pend}):
+            with state.lock:
+                state.pending_big.pop((channel, thread_ts), None)
+            if intent == "decline":
+                return su.reply(channel, thread_ts, "OK, I won't review it. Send me the smaller PRs when they are ready.")
+            for p in pend:  # the requester said it cannot be split: review it fully
+                reviews.start_review(channel, thread_ts, p["msg_ts"], p["user"], PR_URL.search(p["url"]), force=False, confirmed=True)
+            return
+        intent = "agent"  # nothing was asked here (or someone else answered): treat it as a normal message
     if intent == "review":
         found = list(PR_URL.finditer(text)) or list(PR_URL.finditer(info.get("parent_text", "")))
         matches = list({m.group(0).lower(): m for m in found}.values())  # one per distinct PR, in the order given
