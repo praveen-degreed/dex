@@ -268,6 +268,7 @@ class Answer(Base):
 class RunReview(Base):
     def setUp(self):
         super().setUp(); mock.patch.stopall(); self.addCleanup(mock.patch.stopall); su.client = self.slack; services.policy = Policy(self.tmp, OWNER); state.limit_hits.clear(); self.addCleanup(state.limit_hits.clear)
+        for f in config.DRAFTS.glob("*.jsonl"): f.unlink()  # a raw log kept by an earlier test must not leak into this one
         mock.patch.object(reviews.subprocess, "run", return_value=SimpleNamespace(returncode=0)).start()
         self.result = {"result": "review text", "total_cost_usd": 0.5, "permission_denials": []}; self.captured = {}; self.raw_text = None
         def fake_run(args, cwd, env, raw, err, **k):
@@ -316,6 +317,11 @@ class RunReview(Base):
         self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = None; self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review finished but"))
         self.slack.posts.clear(); state.seen.add(self.key); self.result = RuntimeError("boom"); self.go(); self.assertIn("<@U1> Review of", self.slack.texts()[0])
         self.slack.posts.clear(); state.seen.add(self.key); self.result = BudgetExceeded(5.1); self.set_policy({"max_job_usd": {"review": 4}}); self.go(); self.assertIn("<@U1> Stopped the review", self.slack.texts()[0])
+    def test_a_skill_that_deliberately_did_not_review_is_not_flagged_as_a_shortcut(self):
+        self.posted.return_value = ("COMMENTED", "L"); self.result = {"result": "Please split this PR (137 files).\nDEX_VERDICT: skip", "total_cost_usd": 1.3, "permission_denials": []}
+        self.raw_text = "\n".join([self.event("Bash")]); self.go()
+        t = self.slack.texts()[-1]; self.assertIn("did not run a full review", t); self.assertNotIn("ran no review agents", t); self.assertNotIn("quick read", t)
+        self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [], "no 'ran NO review agents' DM for a deliberate skip")
     def test_a_review_that_ran_no_agents_is_flagged_and_its_log_kept(self):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Bash"), self.event("Read"), json.dumps({"type": "result"})]); self.go()
         self.assertTrue(any("The skill ran no review agents" in t for t in self.slack.texts()), "the thread reply warns"); dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("NO review agents", dm[0]["text"])

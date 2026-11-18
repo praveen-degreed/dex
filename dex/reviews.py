@@ -240,6 +240,8 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         )
         cost = result.get("total_cost_usd") or 0.0
         draft.write_text(result.get("result") or "")
+        said = VERDICT_LINE.findall(result.get("result") or "")  # a skill that deliberately did not review (PR too big, closed, ...) ends with DEX_VERDICT: skip
+        skill_verdict = said[-1].lower() if said else None
         if dex_posts:
             body = (result.get("result") or "").strip()
             if not body:
@@ -297,7 +299,8 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
                 gh_state, link = found
                 outcome = github.REVIEW_LABEL.get(gh_state, gh_state.lower())
                 su.reply(channel, thread_ts, f"<@{user}> Review done on {url}: {outcome}. {link}"
-                         + ("\n:warning: The skill ran no review agents (it reviewed alone), so treat this as a quick read, not a full review." if no_agents else "") + usage)
+                         + ("\n:warning: The skill ran no review agents (it reviewed alone), so treat this as a quick read, not a full review." if no_agents else "")
+                         + ("\n:information_source: The skill did not run a full review (for example the PR is too big); read its comment for why." if skill_verdict == "skip" else "") + usage)
                 done = "white_check_mark"
             else:
                 outcome = "finished, but no posted review was found"

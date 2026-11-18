@@ -9,6 +9,7 @@ The running list of what is open for Dex and the review skills. Cleaned up 2026-
 - **action** `degreed/Degreed` #58217: rerun the review (drafts are reviewed now). Its earlier junk comment ("Review not run ... I posted nothing to GitHub") is still on the PR and has to be hidden by hand (or ask me to try minimizing it).
 
 ## Open work
+- **done (needs restart + push, skill side = `review-skills` PR just opened)** A deliberate stop (e.g. fe-workspace #4509, 137 files and 24 units: 'please split this PR') ends with `DEX_VERDICT: skip`, so Dex no longer warns 'ran NO review agents'. Cost of that non-review was $1.35 and 8.5 min; a Dex pre-check (`dexctl cap pr-files N`, unlimited today) would refuse a huge PR for free.
 - **done (needs restart + push)** Find PR links written as `http://` (Slack shows links that way) and inside `*bold*`: they were not matched, so Dex answered 'Which PR should I review?' for #58217 on 2026-11-18. Links are now always handled as `https://`, and the next message in a thread where Dex asked for a link is taken as addressed to it.
 - **done (needs restart + push)** Tell the requester and the owner when the Claude account reaches its limit, and stop starting new reviews on it until it resets. Unverified against a real limit message (the wording is not documented): check `limits.jsonl` after the first real hit and tighten the patterns in `dex/claude_runner.py` (`LIMIT`).
 - **open** Show the limit on the Dex page and in `dexctl status` (today it only appears in Slack and `limits.jsonl`).
