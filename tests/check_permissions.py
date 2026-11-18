@@ -6,7 +6,7 @@ import json, subprocess, sys, tempfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from dex.tools import review_tools, _SKILLS
+from dex.tools import review_tools, _SKILLS, skill_roots
 
 work = Path(tempfile.mkdtemp(prefix="permcheck."))
 (work / "sub").mkdir()
@@ -14,9 +14,10 @@ allowed, denied = review_tools(str(work / "tmp"), True)  # post=True: the skill 
 
 OK, NO = "allowed", "denied"
 cases = []
-for skill in ("review-prs", "review-prs-be", "review-prs-net"):
-    for script in sorted((_SKILLS / skill / "scripts").glob("*.sh")):
-        cases.append((f"script {skill}/{script.name}", f"{script} --help", OK))
+for root in skill_roots():  # both Claude folders: a run on the personal account calls its scripts from ~/.claude-subscription
+    for skill in ("review-prs", "review-prs-be", "review-prs-net"):
+        for script in sorted((root / skill / "scripts").glob("*.sh")):
+            cases.append((f"script {root.parent.name}/{skill}/{script.name}", f"{script} --help", OK))
 cases += [
     ("gh pr view", "gh pr view 1 --repo degreed/fe-workspace --json state", OK),
     ("gh pr diff", "gh pr diff 1 --repo degreed/fe-workspace", OK),
@@ -34,6 +35,7 @@ cases += [
     ("jira issue create is blocked", "jira issue create -s x", NO),
     ("chain: cd && ls | head", "cd sub && ls | head -3", OK),
     ("chain: script after cd", f"cd sub && {_SKILLS}/review-prs/scripts/verify-citations.sh . a/b.ts:1", OK),
+    ("subscription-folder script, as the review's last steps call it", f"{Path.home()}/.claude-subscription/skills/review-prs/scripts/verify-citations.sh {work}/tmp a.ts:1", OK),
     ("post with --body-file", f"gh pr review 1 --repo zz-none-org/none --comment --body-file {work}/tmp/review-body.md", OK),
     ("inline multi-line body with # line is denied", 'gh pr review 1 --repo zz-none-org/none --comment --body "## Title\n\n### Sub\n\ntext"', NO),
     ("gh pr merge is blocked even when posting is on", "gh pr merge 1 --repo zz-none-org/none", NO),

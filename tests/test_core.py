@@ -171,6 +171,14 @@ class Tools(unittest.TestCase):
         for bad in ("Read", "Grep", "Glob", "git ", "Edit", "gh pr review", "gh pr merge", "Bash(cat"): self.assertNotIn(bad, a)
         for bad in ("Edit", "Write", "Read", "Grep", "Glob", "git push", "gh pr merge", "gh pr review"): self.assertIn(bad, d)
 
+class SkillRoots(unittest.TestCase):
+    def test_the_review_allowlist_covers_the_scripts_of_every_claude_folder_including_the_personal_one(self):
+        from dex.tools import review_tools, skill_roots
+        roots = [str(r) for r in skill_roots()]; self.assertTrue(any(r.endswith("/.claude/skills") for r in roots)); self.assertTrue(any(r.endswith("/.claude-subscription/skills") for r in roots))
+        allowed, _ = review_tools("/t/x", True)
+        for r in roots:
+            for name in ("review-prs", "review-prs-be", "review-prs-net"): self.assertIn(f"Bash({r}/{name}/scripts/*)", allowed)
+
 class People(unittest.TestCase):
     def test_lookup_reload_and_bad_file(self):
         from dex import people

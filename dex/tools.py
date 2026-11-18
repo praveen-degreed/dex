@@ -6,6 +6,20 @@ rejected. A path rule needs `//` for an absolute path, which `f"Edit(/{abs_path}
 from pathlib import Path
 
 _SKILLS = Path.home() / ".claude" / "skills"
+
+
+def skill_roots():
+    """Every folder the review skills may be installed in: the normal one plus the skills folder of each Claude profile that has its own
+    config dir (the personal subscription: ~/.claude-subscription). A run on that profile calls its scripts from THERE, so the allowlist must
+    cover it (it did not, and the denial showed up only when the skill's own tool grant lapsed late in a long run)."""
+    from . import claude_env  # imported here: claude_env needs config, which tools.py otherwise does not
+    roots = [_SKILLS]
+    for prof in claude_env.profiles().values():
+        if prof.get("config_dir"):
+            r = Path(str(prof["config_dir"])).expanduser() / "skills"
+            if r not in roots:
+                roots.append(r)
+    return roots
 BOTQ = str(Path(__file__).resolve().parent.parent / "bin" / "botq")  # read-only helper commands for the assistant
 
 REVIEW_READ = [
@@ -18,7 +32,7 @@ REVIEW_READ = [
     "Bash(git -C * grep *)", "Bash(git -C * log *)", "Bash(git -C * show *)", "Bash(git -C * diff *)", "Bash(git -C * blame *)",
     "Bash(git -C * ls-files *)", "Bash(git -C * rev-parse *)", "Bash(git -C * status *)",
     # `/*`, not `/:*`: the `:*` form needs a space after the prefix, so it never matched `.../scripts/name.sh` (verified).
-    f"Bash({_SKILLS}/review-prs/scripts/*)", f"Bash({_SKILLS}/review-prs-be/scripts/*)", f"Bash({_SKILLS}/review-prs-net/scripts/*)",
+    *[f"Bash({root}/{name}/scripts/*)" for root in skill_roots() for name in ("review-prs", "review-prs-be", "review-prs-net")],
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
     # Read-only helpers the skills chain with the commands above (`cd x && script`, `ls | head`). A chained call is allowed
     # only when every part matches a rule, and paths must stay inside the run's directory (verified: tests/check_permissions.py).
