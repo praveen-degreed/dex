@@ -9,6 +9,7 @@ The running list of what is open for Dex and the review skills. Cleaned up 2026-
 - **action** `degreed/Degreed` #58217: rerun the review (drafts are reviewed now). Its earlier junk comment ("Review not run ... I posted nothing to GitHub") is still on the PR and has to be hidden by hand (or ask me to try minimizing it).
 
 ## Open work
+- **done (needs restart + push)** Find PR links written as `http://` (Slack shows links that way) and inside `*bold*`: they were not matched, so Dex answered 'Which PR should I review?' for #58217 on 2026-11-18. Links are now always handled as `https://`, and the next message in a thread where Dex asked for a link is taken as addressed to it.
 - **done (needs restart + push)** Tell the requester and the owner when the Claude account reaches its limit, and stop starting new reviews on it until it resets. Unverified against a real limit message (the wording is not documented): check `limits.jsonl` after the first real hit and tighten the patterns in `dex/claude_runner.py` (`LIMIT`).
 - **open** Show the limit on the Dex page and in `dexctl status` (today it only appears in Slack and `limits.jsonl`).
 - **open** Test the Dex page controls (stop, run, restart, pause, switches, caps, Claude accounts) on a throwaway state; only the page and the read-only API were checked.

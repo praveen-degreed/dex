@@ -14,6 +14,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 from . import claude_env, config, github, progress, services, state
+from .github import canonical
 from .limits import limit_active, limit_text, note_limit
 from . import slack_utils as su
 from .claude_runner import BudgetExceeded, Stopped, UsageLimit, run_claude
@@ -146,7 +147,7 @@ def job_tokens(key):
 
 def start_review(channel, thread_ts, msg_ts, user, match, force):
     """Validate the PR, claim it, count the request against the user's limits, and queue the review."""
-    url, repo, number = match.group(0), match.group(1).lower(), match.group(2)
+    url, repo, number = canonical(match), match.group(1).lower(), match.group(2)  # always the https form (Slack shows http:// links)
     cfg = config.REPOS.get(repo)
     if not cfg:
         su.reply(channel, thread_ts, f"I don't review `{repo}` (it isn't in my configured repos).")

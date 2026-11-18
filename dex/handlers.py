@@ -6,7 +6,7 @@ import time
 from . import config, conversation, ctl, progress, reviews, router, services, state
 from .policy import edit_file
 from . import slack_utils as su
-from .github import PR_URL
+from .github import PR_URL, canonical
 
 log = logging.getLogger("dex")
 
@@ -62,7 +62,7 @@ def do_stop(channel, thread_ts):
 def known_jobs(text):
     """Reviews the bot has (or had) for the PR links in a message, so the router can tell a status question about
     one of them from a question about some other PR."""
-    urls = {m.group(0).lower() for m in PR_URL.finditer(text)}
+    urls = {canonical(m).lower() for m in PR_URL.finditer(text)}
     with state.lock:
         return [{"url": j["url"], "status": j.get("status")} for j in state.jobs.values() if j.get("url", "").lower() in urls]
 
@@ -90,12 +90,12 @@ def build_context(text, mentions_bot, mentions_owner, review_key, session, info)
         job = state.jobs.get(review_key) if review_key else None
     return {
         "mentions_bot": mentions_bot, "mentions_owner": mentions_owner,
-        "pr_urls_in_message": [m.group(0) for m in PR_URL.finditer(text)],
+        "pr_urls_in_message": [canonical(m) for m in PR_URL.finditer(text)],
         "known_review_jobs": known_jobs(text),
         "thread": {
             "is_review_thread": bool(review_key), "review_status": (job or {}).get("status", "none"),
             "has_conversation": bool(session),
-            "parent_pr_url": (lambda m: m.group(0) if m else None)(PR_URL.search(info.get("parent_text", ""))),
+            "parent_pr_url": (lambda m: canonical(m) if m else None)(PR_URL.search(info.get("parent_text", ""))),
             "last_bot_message": info.get("last_bot"),
         },
     }
@@ -114,7 +114,7 @@ def handle(event):
     mentions_owner = f"<@{config.OWNER}>" in text
     review_key = state.threads.get((channel, root)) if root else None
     session = services.sessions.get(channel, root) if root else None
-    tracked = bool(review_key or session)
+    tracked = bool(review_key or session or (channel, root) in state.awaiting_link)  # a thread where I asked for a PR link
 
     # Structural checks only (not intent): is this message for the bot at all?
     if not (mentions_bot or mentions_owner or tracked):
@@ -154,6 +154,8 @@ def handle(event):
         found = list(PR_URL.finditer(text)) or list(PR_URL.finditer(info.get("parent_text", "")))
         matches = list({m.group(0).lower(): m for m in found}.values())  # one per distinct PR, in the order given
         if not matches:
+            with state.lock:
+                state.awaiting_link.add((channel, thread_ts))  # the next message in this thread may just be the link
             return su.reply(channel, thread_ts, "Which PR should I review? Send me the link.")
         force = verdict["force"] or bool(FORCE.search(text))
         if len(matches) > MAX_LINKS:
@@ -162,6 +164,8 @@ def handle(event):
             matches = matches[:MAX_LINKS]
         elif len(matches) > 1:
             su.reply(channel, thread_ts, f"{len(matches)} PRs: reviewing them one at a time, in the order you sent them.")
+        with state.lock:
+            state.awaiting_link.discard((channel, thread_ts))
         for m in matches:
             reviews.start_review(channel, thread_ts, msg_ts, user, m, force=force)
         return

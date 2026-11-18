@@ -4,7 +4,12 @@ import json
 import re
 import subprocess
 
-PR_URL = re.compile(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)")
+PR_URL = re.compile(r"https?://(?:www\.)?github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)", re.I)  # Slack often shows links as http://
+
+
+def canonical(match):
+    """The https form of a matched PR link, whatever form it was written in."""
+    return f"https://github.com/{match.group(1)}/pull/{match.group(2)}"
 REVIEW_LABEL = {"APPROVED": "approved", "CHANGES_REQUESTED": "changes requested", "COMMENTED": "comments posted"}
 
 
