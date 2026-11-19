@@ -152,6 +152,11 @@ def handle(event):
     log.info("route intent=%s conf=%.2f directed=%s via=%s %s", intent, verdict["confidence"], verdict["directed_at_bot"], via, meta)
     if intent == "ignore" and mentions_bot:  # a direct @-mention is for the bot by definition: never leave it unanswered
         verdict, intent = {**verdict, "intent": "agent"}, "agent"  # a copy: never change the router's answer in place
+    pend_here = pending_for(channel, root) if root else []
+    if (pend_here and intent == "agent" and verdict["confidence"] < 0.8 and len(text.split()) <= 8
+            and (user == config.OWNER or user in {p["user"] for p in pend_here})):
+        # a short, unclear reply to my question about a big PR: ask what they meant, do not hand it to the assistant
+        return su.reply(channel, thread_ts, f"<@{user}> Just to be sure: should I review {pend_here[0]['url']} fully as it is, or will you split it first?")
     if intent == "ignore" or not (mentions_bot or mentions_owner or verdict["directed_at_bot"]):
         return
     if verdict["confidence"] < LOW_CONFIDENCE and via == "router" and intent != "agent":
