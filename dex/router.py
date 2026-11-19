@@ -42,8 +42,11 @@ Pick a fixed action ONLY when the message clearly asks for exactly that. Anythin
 - proceed / decline: ONLY when context.thread.pending_confirmation is true (the bot asked "can this big PR be split? ... if it can't be
   split, tell me and I'll review it fully"). Read short answers in that light. proceed = it cannot be split / review it fully / as it is /
   go ahead: "fully", "full", "no" (no, it can't be split), "do it", "go", "yes, review it fully". decline = they will split it or do not
-  want it reviewed now: "I'll split it", "will do", "not now". A bare "yes" is ambiguous: give it a LOW confidence. Anything that is
+  want it reviewed now: "I'll split it", "will do", "not now". A bare "yes" is ambiguous. Anything that is
   really something else in that thread (a question, a different request) is agent. Without a pending question these are never used.
+- unclear_answer: set true ONLY when context.thread.pending_confirmation is true and the message reads as a reply to the bot's question but
+  you cannot tell whether it means proceed or decline (for example a bare "yes", "ok", "hmm"). Then the bot will ask what they meant. False
+  for every clear answer and for every message that is plainly something else.
 - agent: EVERYTHING ELSE meant for the bot. Questions about code, history, reasoning, PRs, CI, people's work
   ("what is Shubham doing?"), estimates of what a fix would take, requests the bot cannot do (it will explain),
   what the bot can do, answers to a question the assistant just asked, small talk with the bot.
@@ -65,6 +68,7 @@ SCHEMA = {
         "intent": {"type": "string", "enum": INTENTS},
         "directed_at_bot": {"type": "boolean"},
         "force": {"type": "boolean"},
+        "unclear_answer": {"type": "boolean"},
         "action": {"type": "string", "enum": ACTIONS},
         "confidence": {"type": "number"},
     },
@@ -113,6 +117,7 @@ def validate(raw):
             "intent": raw["intent"],
             "directed_at_bot": bool(raw.get("directed_at_bot")),
             "force": bool(raw.get("force")),
+            "unclear_answer": bool(raw.get("unclear_answer")),
             "action": raw.get("action") if raw.get("action") in ACTIONS else "",
             "confidence": max(0.0, min(1.0, float(raw.get("confidence", 0)))),
         }

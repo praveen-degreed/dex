@@ -17,7 +17,7 @@ class FakeClient:
     def reactions_remove(self, **kw): self.unreacts.append(kw)
     def texts(self): return [p["text"] for p in self.posts]
 
-def V(intent, directed=True, force=False, conf=0.9): return {"intent": intent, "directed_at_bot": directed, "force": force, "confidence": conf, "cost": 0.002}
+def V(intent, directed=True, force=False, conf=0.9, unclear=False): return {"intent": intent, "directed_at_bot": directed, "force": force, "confidence": conf, "unclear_answer": unclear, "cost": 0.002}
 def ev(user="U1", text="", type_="app_mention", ts="1.1", thread_ts=None, channel="C1"):
     e = {"user": user, "text": text, "type": type_, "ts": ts, "channel": channel}
     if thread_ts: e["thread_ts"] = thread_ts
@@ -96,9 +96,11 @@ class Routing(Base):
         self.start_review.reset_mock(); state.pending_big[("C1", "T")] = [{"url": U4626, "user": "U1", "msg_ts": "1.1", "at": time.time() - 25 * 3600, "size": "x"}]
         handlers.handle(ev(type_="message", text="go ahead", ts="3.3", thread_ts="T")); self.start_review.assert_not_called(); self.assertNotIn(("C1", "T"), state.pending_big)
     def test_an_unclear_short_reply_to_the_big_pr_question_gets_a_clarifying_question_not_the_assistant(self):
-        self.pend(); self.verdict = V("agent", conf=0.5); handlers.handle(ev(type_="message", text="hmm", ts="5.1", thread_ts="T"))
+        self.pend(); self.verdict = V("agent", conf=0.5, unclear=True); handlers.handle(ev(type_="message", text="hmm", ts="5.1", thread_ts="T"))
         self.start_review.assert_not_called(); self.start_question.assert_not_called()
         self.assertIn("Just to be sure: should I review", self.slack.texts()[-1]); self.assertIn(U4626, self.slack.texts()[-1]); self.assertIn(("C1", "T"), state.pending_big, "the question stays open")
+    def test_a_low_confidence_guess_alone_does_not_trigger_the_question_only_the_models_unclear_flag_does(self):
+        self.pend(); self.verdict = V("agent", conf=0.4); handlers.handle(ev(type_="message", text="ok", ts="5.4", thread_ts="T")); self.start_question.assert_called_once(); self.assertNotIn("Just to be sure", " ".join(self.slack.texts()))
     def test_a_real_question_in_that_thread_still_goes_to_the_assistant(self):
         self.pend(); self.verdict = V("agent", conf=0.9); handlers.handle(ev(type_="message", text="who wrote the Maestro results page and when was it last changed?", ts="5.2", thread_ts="T"))
         self.start_question.assert_called_once(); self.assertNotIn("Just to be sure", " ".join(self.slack.texts()))
