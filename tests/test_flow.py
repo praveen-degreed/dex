@@ -106,6 +106,11 @@ class Routing(Base):
         self.start_question.assert_called_once(); self.assertNotIn("Just to be sure", " ".join(self.slack.texts()))
     def test_proceed_without_a_question_is_just_a_normal_message(self):
         self.verdict = V("proceed"); handlers.handle(ev(text="<@BOT> go ahead", ts="4.1")); self.start_review.assert_not_called(); self.start_question.assert_called_once()
+    def test_the_plain_message_twin_of_a_mention_is_treated_as_a_mention_whichever_arrives_first(self):
+        su.bot_id = "BOT"; self.addCleanup(setattr, su, "bot_id", None)
+        self.info = {"parent_text": f"<@BOT> {U4626}", "last_bot": "Review done"}; self.verdict = V("review", directed=False, conf=0.9)
+        handlers.handle(ev(type_="message", text="<@BOT|Review Bot> review again", ts="6.2", thread_ts="T")); self.assertTrue(self.router_calls[-1][1]["mentions_bot"]); self.start_review.assert_called_once()
+        self.start_review.reset_mock(); handlers.handle(ev(type_="app_mention", text="<@BOT|Review Bot> review again", ts="6.2", thread_ts="T")); self.start_review.assert_not_called()  # the twin is deduped
     def test_an_http_link_wrapped_in_slack_formatting_is_found_and_normalised_to_https(self):
         self.verdict = V("review"); handlers.handle(ev(text="<@BOT> *<http://github.com/degreed/Degreed/pull/58217|github.com/degreed/Degreed/pull/58217>*", ts="9.1"))
         self.assertNotIn("Which PR", " ".join(self.slack.texts())); m = self.start_review.call_args[0][4]; self.assertEqual((m.group(1), m.group(2)), ("degreed/Degreed", "58217"))

@@ -123,7 +123,9 @@ def handle(event):
     services.policy.maybe_reload()
     channel, msg_ts, root = event["channel"], event["ts"], event.get("thread_ts")
     thread_ts = root or msg_ts
-    mentions_bot = event.get("type") == "app_mention"
+    # Slack sends a message that mentions the bot twice (as app_mention and as a plain message), in either order, and whichever is handled
+    # first wins the dedupe: so a plain message that mentions the bot must count as a mention, or it can be judged "not for the bot".
+    mentions_bot = event.get("type") == "app_mention" or bool(su.bot_id and f"<@{su.bot_id}" in text)
     mentions_owner = f"<@{config.OWNER}>" in text
     review_key = state.threads.get((channel, root)) if root else None
     session = services.sessions.get(channel, root) if root else None
