@@ -94,6 +94,11 @@ The thread reply ends with a usage line: total tokens (new, cached, output), cos
 labelled an API-equivalent estimate (you are not billed per token). The account is read when the review starts, so a switch during a run does not
 change what is reported; the audit log records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
 
+## Queue notices
+Reviews run one at a time (`CONCURRENCY`, default 1). A review that has to wait is announced in its thread, tagging the requester: it is
+queued, #N in line, behind which review (and how many more). The moment it is picked up, Dex posts "Your turn: the review of ... is running
+now (it waited 12m 04s)". A review that can start at once just says "Review started". Questions and finished reviews do not count as ahead.
+
 ## Big PRs: Dex asks first
 A PR above 50 files or 3000 changed lines is **not run straight away**. Dex replies in the thread, tagging the requester: the PR is big, a smaller PR
 gets a better review and uses far fewer tokens, can it be split? If it can, the requester sends the smaller PRs. If it can't (for example it is tested

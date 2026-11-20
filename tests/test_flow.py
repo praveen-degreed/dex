@@ -247,6 +247,19 @@ class DraftPr(DotNetRepo):
         self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "is_draft": True}; self.paths.return_value = ["trunk/a.cs"]; self.go(UNET)
         self.pool.submit.assert_called_once(); self.assertNotIn("draft", " ".join(self.slack.texts()).lower().replace("review started", ""))
 
+class Queue(StartReview):
+    def test_a_review_that_has_to_wait_says_so_with_its_place_and_what_is_ahead(self):
+        state.new_job("degreed/degreed#58691@x", url="https://github.com/degreed/Degreed/pull/58691", sha="x", repo="degreed/degreed"); state.update_job("degreed/degreed#58691@x", status="running")
+        self.go(); t = self.slack.texts()[0]; self.assertIn("<@U1> Queued:", t); self.assertIn("#1 in line", t); self.assertIn("behind degreed/Degreed#58691", t); self.assertIn("the moment yours starts", t)
+        self.assertTrue(state.jobs[f"{FE}#4626@{'a' * 40}"]["waited"])
+        state.new_job("another@y", url="https://github.com/degreed/x/pull/1", sha="y", repo="degreed/x"); state.seen.clear(); state.inflight.discard(f"{FE}#4626@{'a' * 40}")
+        self.slack.posts.clear(); self.go(force=True); self.assertIn("#2 in line", self.slack.texts()[0]); self.assertIn("and 1 more", self.slack.texts()[0])
+    def test_a_review_that_can_start_at_once_just_says_started(self):
+        self.go(); self.assertTrue(self.slack.texts()[0].startswith("Review started on")); self.assertFalse(state.jobs[f"{FE}#4626@{'a' * 40}"]["waited"])
+    def test_finished_and_questions_do_not_count_as_ahead(self):
+        state.new_job("old@z", url="https://github.com/degreed/x/pull/2", sha="z", repo="degreed/x"); state.update_job("old@z", status="done")
+        state.new_job("q@q", kind="question"); self.go(); self.assertTrue(self.slack.texts()[0].startswith("Review started on"))
+
 class SizeGuard(StartReview):
     def test_big_prs_are_refused_unless_the_owner_forces(self):
         key = f"{FE}#4626@{'a' * 40}"; self.set_policy({"max_pr_files": 50}); self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "files": 83}
@@ -366,6 +379,10 @@ class RunReview(Base):
         self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = None; self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review finished but"))
         self.slack.posts.clear(); state.seen.add(self.key); self.result = RuntimeError("boom"); self.go(); self.assertIn("<@U1> Review of", self.slack.texts()[0])
         self.slack.posts.clear(); state.seen.add(self.key); self.result = BudgetExceeded(5.1); self.set_policy({"max_job_usd": {"review": 4}}); self.go(); self.assertIn("<@U1> Stopped the review", self.slack.texts()[0])
+    def test_a_review_that_waited_announces_when_it_is_picked_up_and_one_that_did_not_wait_says_nothing(self):
+        state.update_job(self.key, waited=True, queued_at=time.time() - 125); self.posted.return_value = ("APPROVED", "L"); self.go()
+        t = self.slack.texts()[0]; self.assertTrue(t.startswith("<@U1> Your turn: the review of"), t); self.assertIn("waited 2m 05s", t)
+        self.slack.posts.clear(); state.seen.add(self.key); state.update_job(self.key, waited=False); self.go(); self.assertNotIn("Your turn", " ".join(self.slack.texts()))
     def test_a_skill_that_deliberately_did_not_review_is_not_flagged_as_a_shortcut(self):
         self.posted.return_value = ("COMMENTED", "L"); self.result = {"result": "Please split this PR (137 files).\nDEX_VERDICT: skip", "total_cost_usd": 1.3, "permission_denials": []}
         self.raw_text = "\n".join([self.event("Bash")]); self.go()

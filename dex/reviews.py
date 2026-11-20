@@ -211,13 +211,23 @@ def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False
     if not ok:
         state.release(key)
         return su.reply(channel, thread_ts, why)
-    state.new_job(key, url=url, sha=sha, repo=repo, user=user, channel=channel, thread=thread_ts)
+    with state.lock:  # the reviews already running or waiting, before this one joins
+        ahead = [j for k, j in state.jobs.items() if k != key and j.get("kind") == "review" and j.get("status") in ("queued", "running")]
+    waiting = len(ahead) >= config.CONCURRENCY
+    state.new_job(key, url=url, sha=sha, repo=repo, user=user, channel=channel, thread=thread_ts, waited=waiting)
     with state.lock:
         state.threads[(channel, thread_ts)] = key
     pool.submit(review, url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, info["is_fork"])
     services.policy.audit(user=user, capability="review", channel=channel, thread=thread_ts, pr=url, sha=sha[:7], decision="started")
     su.react(channel, msg_ts, "eyes")
-    su.reply(channel, thread_ts, f"Review started on {url} at `{sha[:7]}`. Ask for status or tell me to stop at any time.")
+    if waiting:
+        running = next((j for j in ahead if j.get("status") == "running"), ahead[0])
+        label = (running.get("url") or "another review").replace("https://github.com/", "").replace("/pull/", "#")
+        su.reply(channel, thread_ts, f"<@{user}> Queued: {url} at `{sha[:7]}` is #{len(ahead) - config.CONCURRENCY + 1} in line, behind {label}"
+                                     f"{' and ' + str(len(ahead) - 1) + ' more' if len(ahead) > 1 else ''}. Reviews run one at a time. "
+                                     "I'll tell you here the moment yours starts. Ask for status or tell me to stop at any time.")
+    else:
+        su.reply(channel, thread_ts, f"Review started on {url} at `{sha[:7]}`. Ask for status or tell me to stop at any time.")
 
 
 def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, is_fork):
@@ -227,6 +237,9 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         state.update_job(key, status="stopped", finished_at=time.time())
         state.finish_job(key)
         return su.reply(channel, thread_ts, "Cancelled before it started.")
+    if (state.jobs.get(key) or {}).get("waited"):  # it sat in the queue: say so the moment it is picked up
+        waited = int(time.time() - (state.jobs.get(key) or {}).get("queued_at", time.time()))
+        su.reply(channel, thread_ts, f"<@{user}> Your turn: the review of {url} is running now (it waited {waited // 60}m {waited % 60:02d}s).")
     dex_posts = bool(cfg.get("dex_posts")) and not is_fork  # the skill only drafts; Dex posts the draft as one comment-only review
     post = not is_fork and not dex_posts  # otherwise the skill posts itself, except on untrusted forks (draft only, shown in Slack)
     name = f"{repo.replace('/', '_')}-{number}-{sha[:7]}"
