@@ -89,10 +89,18 @@ a subscription has usage limits that Foundry does not; **running private company
 company policy: check before you switch.**
 
 ## What every finished review reports
-The thread reply ends with a usage line: total tokens (new, cached, output), cost, number of agents, time and the account it ran on, for example
-`_Usage: 2.54M tokens (340K new, 2.20M cached, 3K output) · $2.44 · 5 agents · 7m 36s · account: Azure Foundry_`. On the personal plan the cost is
-labelled an API-equivalent estimate (you are not billed per token). The account is read when the review starts, so a switch during a run does not
-change what is reported; the audit log records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
+The thread reply ends with a usage card (a Slack quote with bold labels):
+```
+> :bar_chart: *Usage*
+> *Tokens*  `11.20M`  (920K new · 10.26M cached · 17K output)
+> *Cost*  `$8.17`  _API-equivalent estimate, not billed per token_
+> *Agents*  `19`      *Time*  `14m 13s`
+> *Account*  Personal Claude plan (subscription)
+> :no_entry_sign: 1 tool call blocked by safety rules
+```
+On the personal plan the cost is labelled an API-equivalent estimate (you are not billed per token); on Azure Foundry it is just the cost. The blocked-calls line
+only appears when something was blocked. The account is read when the review starts, so a switch during a run does not change what is reported; the audit log
+records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
 
 ## Queue notices
 Reviews run one at a time (`CONCURRENCY`, default 1). A review that has to wait is announced in its thread, tagging the requester: it is

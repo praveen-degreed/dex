@@ -113,23 +113,28 @@ def _n(n):
 
 
 def usage_line(key, cost, agents, started, profile, denied=0):
-    """One line for the end of a review: tokens, cost, agents, time and the account it ran on ('' if nothing was used)."""
+    """The usage card at the end of a review (Slack mrkdwn, shown as a quote): tokens, cost, agents, time, account. '' if nothing was used."""
     t = job_tokens(key)
     fresh, cached, out = t.get("fresh", 0), t.get("cache_read", 0), t.get("output", 0)
     total = fresh + cached + out
     if not total and not cost:
         return ""
-    mins = max(0, int((datetime.datetime.now(datetime.timezone.utc) - started).total_seconds()))
-    account = "Azure Foundry" if profile == claude_env.FOUNDRY else f"{profile} (personal plan)"
-    price = f"${cost:.2f}" + ("" if profile == claude_env.FOUNDRY else " (API-equivalent estimate, not billed per token)")
-    parts = [f"{_n(total)} tokens ({_n(fresh)} new, {_n(cached)} cached, {_n(out)} output)", price]
+    secs = max(0, int((datetime.datetime.now(datetime.timezone.utc) - started).total_seconds()))
+    took = f"{secs // 60}m {secs % 60:02d}s" if secs >= 60 else f"{secs}s"
+    own = profile == claude_env.FOUNDRY
+    account = "Azure Foundry" if own else ("Personal Claude plan (subscription)" if profile == "subscription" else f"{profile} profile")
+    cost_line = f"> *Cost*  `${cost:.2f}`" + ("" if own else "  _API-equivalent estimate, not billed per token_")
+    lines = ["", "> :bar_chart: *Usage*",
+             f"> *Tokens*  `{_n(total)}`  ({_n(fresh)} new · {_n(cached)} cached · {_n(out)} output)",
+             cost_line]
     if agents is not None:
-        parts.append(f"{agents} agent{'s' if agents != 1 else ''}")
-    parts.append(f"{mins // 60}m {mins % 60:02d}s" if mins >= 60 else f"{mins}s")
-    parts.append(f"account: {account}")
+        lines.append(f"> *Agents*  `{agents}`      *Time*  `{took}`")
+    else:
+        lines.append(f"> *Time*  `{took}`")
+    lines.append(f"> *Account*  {account}")
     if denied:
-        parts.append(f"{denied} tool call{'s' if denied != 1 else ''} blocked by safety rules")
-    return "\n_Usage: " + " · ".join(parts) + "_"
+        lines.append(f"> :no_entry_sign: {denied} tool call{'s' if denied != 1 else ''} blocked by safety rules")
+    return "\n".join(lines)
 
 
 def remove_worktree(clone, wt):

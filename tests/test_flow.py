@@ -368,7 +368,7 @@ class RunReview(Base):
     def test_the_end_of_a_review_reports_tokens_cost_agents_time_and_account(self):
         self.posted.return_value = ("APPROVED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 340000, "cache_read": 2200000, "output": 3100}
         self.result = {"result": "x", "total_cost_usd": 2.44, "permission_denials": []}; self.raw_text = "\n".join([self.event("Agent"), self.event("Agent")]); self.go()
-        t = self.slack.texts()[-1]; self.assertIn("2.54M tokens (340K new, 2.20M cached, 3K output)", t); self.assertIn("$2.44", t); self.assertIn("2 agents", t); self.assertIn("account: Azure Foundry", t)
+        t = self.slack.texts()[-1]; self.assertIn("*Tokens*  `2.54M`  (340K new · 2.20M cached · 3K output)", t); self.assertIn("*Cost*  `$2.44`", t); self.assertIn("*Agents*  `2`", t); self.assertIn("*Account*  Azure Foundry", t); self.assertIn("> :bar_chart: *Usage*", t)
         self.assertNotIn("API-equivalent", t)
     def test_on_the_personal_plan_the_cost_is_labelled_an_estimate_and_the_account_is_read_at_the_start(self):
         import tempfile
@@ -377,7 +377,7 @@ class RunReview(Base):
         orig = self.result
         def switch_back_midway(args, cwd, env, raw, err, **k): self.set_policy({}); return orig  # a switch during the run must not change what is reported
         reviews.run_claude.side_effect = switch_back_midway; self.go()
-        self.assertIn("API-equivalent estimate", self.slack.texts()[-1]); self.assertIn("account: subscription", self.slack.texts()[-1])
+        self.assertIn("API-equivalent estimate", self.slack.texts()[-1]); self.assertIn("*Account*  Personal Claude plan (subscription)", self.slack.texts()[-1])
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["profile"], "subscription")
     def test_the_requester_is_tagged_when_the_review_ends(self):
         self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review done"), self.slack.texts()[-1])
@@ -471,7 +471,7 @@ class RunReview(Base):
                                                              {"tool_name": "Bash", "tool_input": {"command": "git -C /x checkout main"}}]}
         self.posted.return_value = ("APPROVED", "L"); state.jobs[self.key]["tokens"] = {"fresh": 1, "cache_read": 1, "output": 1}; self.go()
         dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("1 risky", dm[0]["text"]); self.assertIn("of 3 blocked", dm[0]["text"]); self.assertNotIn("ls /x/y", dm[0]["text"])
-        self.assertIn("3 tool calls blocked by safety rules", self.slack.texts()[-1])
+        self.assertIn("> :no_entry_sign: 3 tool calls blocked by safety rules", self.slack.texts()[-1])
         logged = [json.loads(l) for l in (config.DATA / "denials.jsonl").read_text().splitlines()]; self.assertEqual([r["tool"] for r in logged], ["Bash", "WebFetch", "Bash"])
     def test_only_harmless_denials_send_no_dm_at_all(self):
         self.result = {**self.result, "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "ls /x/y"}}, {"tool_name": "Bash", "tool_input": {"command": "sed -n 1,5p f"}}]}
