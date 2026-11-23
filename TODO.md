@@ -9,6 +9,7 @@ The running list of what is open for Dex and the review skills. Cleaned up 2026-
 - **action** `degreed/Degreed` #58217: rerun the review (drafts are reviewed now). Its earlier junk comment ("Review not run ... I posted nothing to GitHub") is still on the PR and has to be hidden by hand (or ask me to try minimizing it).
 
 ## Open work
+- **done (needs restart + push)** After a review with comments to address, the reply invites the requester to ask 'review again' in the same thread (and the re-review checks the earlier comments).
 - **done (needs restart + push)** 'review again' in the #4482 thread (2026-11-20 19:56) got no reply: Slack sent the plain-message twin first, the handler did not count it as a mention (only the app_mention twin did), the router judged it 'ignore', and the app_mention twin was then dropped as already handled. A plain message that mentions the bot now counts as a mention.
 - **done (needs restart + push)** Queue notices: a review that has to wait says it is queued, #N in line, behind which review; and says 'Your turn ... is running now (it waited ...)' the moment it is picked up. Before, it said 'Review started' immediately even while waiting.
 - **done (needs restart + push)** The one-word answer 'fully' to the big-PR question (fe-workspace #4482, 2026-11-19) was read as a plain question: the router said agent at 0.50 and the assistant replied 'I can't run a full review, reviews are run by a separate process'. The router now reads short answers ('fully', 'no' = it can't be split, 'do it', 'will do'; 53/53 on the eval), when the router (the model) says it cannot tell whether a reply means proceed or decline it flags `unclear_answer` and Dex asks 'Just to be sure: should I review it fully or will you split it?' instead of going to the assistant (no word or length rule; 56/56 on the eval), and the assistant no longer says reviews are done by another process. A pending question is in memory only: a restart forgets it, so after a restart send the link again (or `review force`).
@@ -23,7 +24,7 @@ The running list of what is open for Dex and the review skills. Cleaned up 2026-
 - **open** Show the limit on the Dex page and in `dexctl status` (today it only appears in Slack and `limits.jsonl`).
 - **open** Test the Dex page controls (stop, run, restart, pause, switches, caps, Claude accounts) on a throwaway state; only the page and the read-only API were checked.
 - **done** Full live permission check run after the allowlist changes: 76/76 as expected (now covers both Claude folders; it cost $2.95, not $0.95).
-- **open (later)** Reviews in parallel. `CONCURRENCY=1` today; needs a raise in `.env` plus a restart; test two small reviews first.
+- **done (needs restart)** Reviews in parallel: `CONCURRENCY=2` in `.env` (requested 2026-11-21). Watch the first two-at-once run: git worktrees from the same clone, memory, and the personal plan's usage drawing down twice as fast.
 - **open** Trim the enterprise startup load (about 35K vs 25K tokens per session): 12 skills and 9 plugins in the normal folder.
 - **open** Measure the `py-docs-conformance` cap (60 to 40 turns) on the next large BE review; check it did not cut depth.
 - **open (optional)** Fair baseline vs the built-in `/code-review` (it reviewed the wrong diff in three runs: the clone's local `main` is stale).

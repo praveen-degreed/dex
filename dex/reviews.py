@@ -108,6 +108,20 @@ def count_agent_calls(raw):
     return n
 
 
+AGAIN_HINT = ("\n\n:speech_balloon: _Addressed the comments? Ask me to review again right here in this thread "
+              "(for example \"review again\") and I'll re-review it and check the earlier comments._")
+OUTCOME_ICON = {"approved": ":white_check_mark:", "changes requested": ":x:", "comments posted": ":speech_balloon:"}
+
+
+def done_message(user, url, outcome, link, notes, usage, hint):
+    """The reply that ends a review: who it is for, the result with a link, any notes, the usage card, and the invitation to ask again."""
+    label = url.replace("https://github.com/", "").replace("/pull/", " #")
+    lines = [f"{OUTCOME_ICON.get(outcome, ':white_check_mark:')} <@{user}> Your review of <{url}|{label}> is done.",
+             f"*Result*  {outcome.capitalize()}" + (f"  ·  <{link}|View the review>" if link else "")]
+    lines += notes
+    return "\n".join(lines) + usage + hint
+
+
 def _n(n):
     return f"{n / 1e6:.2f}M" if n >= 1e6 else (f"{n / 1e3:.0f}K" if n >= 1e3 else str(int(n)))
 
@@ -124,7 +138,7 @@ def usage_line(key, cost, agents, started, profile, denied=0):
     own = profile == claude_env.FOUNDRY
     account = "Azure Foundry" if own else ("Personal Claude plan (subscription)" if profile == "subscription" else f"{profile} profile")
     cost_line = f"> *Cost*  `${cost:.2f}`" + ("" if own else "  _API-equivalent estimate, not billed per token_")
-    lines = ["", "> :bar_chart: *Usage*",
+    lines = ["> :bar_chart: *Usage*",
              f"> *Tokens*  `{_n(total)}`  ({_n(fresh)} new · {_n(cached)} cached · {_n(out)} output)",
              cost_line]
     if agents is not None:
@@ -134,7 +148,7 @@ def usage_line(key, cost, agents, started, profile, denied=0):
     lines.append(f"> *Account*  {account}")
     if denied:
         lines.append(f"> :no_entry_sign: {denied} tool call{'s' if denied != 1 else ''} blocked by safety rules")
-    return "\n".join(lines)
+    return "\n\n" + "\n".join(lines)  # a blank line first, so the card stands apart from the sentence above it
 
 
 def remove_worktree(clone, wt):
@@ -229,7 +243,8 @@ def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False
         running = next((j for j in ahead if j.get("status") == "running"), ahead[0])
         label = (running.get("url") or "another review").replace("https://github.com/", "").replace("/pull/", "#")
         su.reply(channel, thread_ts, f"<@{user}> Queued: {url} at `{sha[:7]}` is #{len(ahead) - config.CONCURRENCY + 1} in line, behind {label}"
-                                     f"{' and ' + str(len(ahead) - 1) + ' more' if len(ahead) > 1 else ''}. Reviews run one at a time. "
+                                     f"{' and ' + str(len(ahead) - 1) + ' more' if len(ahead) > 1 else ''}. "
+                                     f"{'Reviews run one at a time' if config.CONCURRENCY == 1 else f'{config.CONCURRENCY} reviews run at a time'}. "
                                      "I'll tell you here the moment yours starts. Ask for status or tell me to stop at any time.")
     else:
         su.reply(channel, thread_ts, f"Review started on {url} at `{sha[:7]}`. Ask for status or tell me to stop at any time.")
@@ -334,9 +349,10 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
             if found:
                 gh_state, link = found
                 outcome = github.REVIEW_LABEL.get(gh_state, gh_state.lower())
-                su.reply(channel, thread_ts, f"<@{user}> Review done on {url}: {outcome}. {link}"
-                         + ("\n:warning: The skill ran no review agents (it reviewed alone), so treat this as a quick read, not a full review." if no_agents else "")
-                         + ("\n:information_source: The skill did not run a full review (for example the PR is too big); read its comment for why." if skill_verdict == "skip" else "") + usage)
+                notes = ([":warning: The skill ran no review agents (it reviewed alone), so treat this as a quick read, not a full review."] if no_agents else []) \
+                    + ([":information_source: The skill did not run a full review (for example the PR is too big); read its comment for why."] if skill_verdict == "skip" else [])
+                su.reply(channel, thread_ts, done_message(user, url, outcome, link, notes, usage,
+                                                          AGAIN_HINT if outcome in ("changes requested", "comments posted") and skill_verdict != "skip" else ""))
                 done = "white_check_mark"
             else:
                 outcome = "finished, but no posted review was found"

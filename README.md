@@ -89,21 +89,26 @@ a subscription has usage limits that Foundry does not; **running private company
 company policy: check before you switch.**
 
 ## What every finished review reports
-The thread reply ends with a usage card (a Slack quote with bold labels):
+The thread reply is laid out as a small, clean card (Slack formatting: bold labels, code-styled numbers, a quote bar for the usage):
 ```
+:speech_balloon: @requester Your review of fe-workspace #4482 is done.
+*Result*  Comments posted  ·  View the review
+
 > :bar_chart: *Usage*
 > *Tokens*  `11.20M`  (920K new · 10.26M cached · 17K output)
 > *Cost*  `$8.17`  _API-equivalent estimate, not billed per token_
 > *Agents*  `19`      *Time*  `14m 13s`
 > *Account*  Personal Claude plan (subscription)
 > :no_entry_sign: 1 tool call blocked by safety rules
+
+:speech_balloon: _Addressed the comments? Ask me to review again right here in this thread ..._
 ```
-On the personal plan the cost is labelled an API-equivalent estimate (you are not billed per token); on Azure Foundry it is just the cost. The blocked-calls line
+The icon follows the result (approved, changes requested, comments posted). The last line only appears when there are comments to address, so the re-review stays in the same thread. On the personal plan the cost is labelled an API-equivalent estimate (you are not billed per token); on Azure Foundry it is just the cost. The blocked-calls line
 only appears when something was blocked. The account is read when the review starts, so a switch during a run does not change what is reported; the audit log
 records the same `profile`, `agents` and `tokens`. The reply also **tags the person who asked for the review** (`@name`), so they are notified in Slack when it is done, failed, or stopped at the cost limit.
 
 ## Queue notices
-Reviews run one at a time (`CONCURRENCY`, default 1). A review that has to wait is announced in its thread, tagging the requester: it is
+Reviews run `CONCURRENCY` at a time (default 1; currently 2 in `.env`: two reviews in parallel, so each also uses the account's usage allowance side by side). A review that has to wait is announced in its thread, tagging the requester: it is
 queued, #N in line, behind which review (and how many more). The moment it is picked up, Dex posts "Your turn: the review of ... is running
 now (it waited 12m 04s)". A review that can start at once just says "Review started". Questions and finished reviews do not count as ahead.
 

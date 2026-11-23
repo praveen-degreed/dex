@@ -253,6 +253,13 @@ class DraftPr(DotNetRepo):
         self.pool.submit.assert_called_once(); self.assertNotIn("draft", " ".join(self.slack.texts()).lower().replace("review started", ""))
 
 class Queue(StartReview):
+    def setUp(self):
+        super().setUp(); mock.patch.object(config, "CONCURRENCY", 1).start()  # these tests are about one-at-a-time, whatever .env says
+    def test_the_queue_notice_follows_the_concurrency_setting(self):
+        state.new_job("degreed/degreed#58691@x", url="https://github.com/degreed/Degreed/pull/58691", sha="x", repo="degreed/degreed"); state.update_job("degreed/degreed#58691@x", status="running")
+        with mock.patch.object(config, "CONCURRENCY", 2): self.go(); self.assertTrue(self.slack.texts()[0].startswith("Review started on"), "a second slot is free: no queue")
+        state.new_job("b@b", url="https://github.com/degreed/x/pull/9", sha="b", repo="degreed/x"); state.update_job("b@b", status="running"); state.seen.clear(); state.inflight.clear(); self.slack.posts.clear()
+        with mock.patch.object(config, "CONCURRENCY", 2): self.go(force=True); t = self.slack.texts()[0]; self.assertIn("Queued", t); self.assertIn("2 reviews run at a time", t)
     def test_a_review_that_has_to_wait_says_so_with_its_place_and_what_is_ahead(self):
         state.new_job("degreed/degreed#58691@x", url="https://github.com/degreed/Degreed/pull/58691", sha="x", repo="degreed/degreed"); state.update_job("degreed/degreed#58691@x", status="running")
         self.go(); t = self.slack.texts()[0]; self.assertIn("<@U1> Queued:", t); self.assertIn("#1 in line", t); self.assertIn("behind degreed/Degreed#58691", t); self.assertIn("the moment yours starts", t)
@@ -347,7 +354,7 @@ class RunReview(Base):
         self.key = f"{FE}#4626@{'a' * 40}"; state.new_job(self.key, url=U4626, sha="a" * 40, repo=FE); state.inflight.add(self.key); state.seen.add(self.key)
     def go(self, fork=False): reviews.review(U4626, FE, "4626", "a" * 40, self.key, config.REPOS[FE], "C1", "T", "M", "U1", fork)
     def test_done_posted(self):
-        self.posted.return_value = ("COMMENTED", "https://gh/review/1"); self.go(); self.assertIn("comments posted. https://gh/review/1", self.slack.texts()[0])
+        self.posted.return_value = ("COMMENTED", "https://gh/review/1"); self.go(); self.assertIn("*Result*  Comments posted  ·  <https://gh/review/1|View the review>", self.slack.texts()[0])
         self.assertEqual(state.jobs[self.key]["status"], "done"); self.assertEqual(self.slack.reacts[-1]["name"], "white_check_mark"); self.assertIn("$0.50", services.policy.summary("U1"))
         a = self.captured["args"]; allowed = a[a.index("--allowedTools") + 1]; self.assertIn("gh pr review", allowed); self.assertIn("Edit(//", allowed); self.assertTrue(self.captured["env"]["TMPDIR"].endswith("/"))
         self.assertNotIn(self.key, state.inflight); self.assertFalse((config.TMPS / f"degreed_fe-workspace-4626-{'a' * 7}").exists(), "private temp dir removed")
@@ -379,8 +386,13 @@ class RunReview(Base):
         reviews.run_claude.side_effect = switch_back_midway; self.go()
         self.assertIn("API-equivalent estimate", self.slack.texts()[-1]); self.assertIn("*Account*  Personal Claude plan (subscription)", self.slack.texts()[-1])
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["profile"], "subscription")
+    def test_a_review_with_comments_to_address_invites_the_requester_to_ask_again_in_the_same_thread(self):
+        self.posted.return_value = ("COMMENTED", "L"); self.go(); t = self.slack.texts()[-1]
+        self.assertIn("Addressed the comments? Ask me to review again right here in this thread", t); self.assertGreater(t.index("review again"), t.index("Usage"), "the invitation closes the message, after the usage card")
+        self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = ("CHANGES_REQUESTED", "L"); self.go(); self.assertIn("review again right here", self.slack.texts()[-1])
+        self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertNotIn("review again", self.slack.texts()[-1], "nothing to address after an approval")
     def test_the_requester_is_tagged_when_the_review_ends(self):
-        self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review done"), self.slack.texts()[-1])
+        self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertTrue(self.slack.texts()[-1].startswith(":white_check_mark: <@U1> Your review of <https://github.com/degreed/fe-workspace/pull/4626|degreed/fe-workspace #4626> is done."), self.slack.texts()[-1])
         self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = None; self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review finished but"))
         self.slack.posts.clear(); state.seen.add(self.key); self.result = RuntimeError("boom"); self.go(); self.assertIn("<@U1> Review of", self.slack.texts()[0])
         self.slack.posts.clear(); state.seen.add(self.key); self.result = BudgetExceeded(5.1); self.set_policy({"max_job_usd": {"review": 4}}); self.go(); self.assertIn("<@U1> Stopped the review", self.slack.texts()[0])
@@ -421,7 +433,7 @@ class RunReview(Base):
         a = self.captured["args"]; self.assertEqual(a[2].split("\n")[0], "/dg-maestro-review 57415"); self.assertIn("DRAFT MODE", a[2]); self.assertNotIn("gh pr review", a[a.index("--allowedTools") + 1], "Claude itself may not post")
         gh = [c[0][0] for c in reviews.subprocess.run.call_args_list if c[0][0][:3] == ["gh", "pr", "review"]]; self.assertEqual(len(gh), 1); cmd = gh[0]
         self.assertEqual((cmd[3], cmd[4], cmd[5], cmd[6]), ("57415", "--repo", NET, "--comment")); self.assertNotIn("--approve", cmd); self.assertNotIn("--request-changes", cmd)
-        self.assertIn("comments posted. https://gh/r/1", self.slack.texts()[-1]); self.assertEqual(state.jobs[key]["status"], "done")
+        self.assertIn("*Result*  Comments posted  ·  <https://gh/r/1|View the review>", self.slack.texts()[-1]); self.assertEqual(state.jobs[key]["status"], "done")
     def dotnet(self, text, raw=None, run=None):
         cfg = {**NET_CFG, "skill": "/review-prs-net {url}"}; key = f"{NET}#57415@{'a' * 40}"; state.new_job(key, url=UNET, sha="a" * 40, repo=NET); state.inflight.add(key); state.seen.add(key)
         self.result = {"result": text, "total_cost_usd": 1.0, "permission_denials": []}; self.posted.return_value = ("APPROVED", "https://gh/r/2"); self.raw_text = raw
