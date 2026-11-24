@@ -173,7 +173,7 @@ class StartReview(Base):
         for t in ("dex.reviews.start_review",): mock.patch.stopall()
         self.addCleanup(mock.patch.stopall)
         su.client = self.slack; services.policy = Policy(self.tmp, OWNER)
-        self.pool = mock.patch.object(reviews, "pool").start(); self.info = mock.patch("dex.github.pr_info").start()
+        self.pool = mock.patch.object(reviews, "pool").start(); self.info = mock.patch("dex.github.pr_info").start(); self.review_at = mock.patch("dex.github.review_at", return_value=None).start()
         self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False}
     def go(self, url=U4626, user="U1", force=False): return reviews.start_review("C1", "T", "M", user, re.search(r"https://github\.com/([\w.-]+/[\w.-]+)/pull/(\d+)", url), force)
     def test_unconfigured_repo(self):
@@ -251,6 +251,16 @@ class DraftPr(DotNetRepo):
     def test_a_draft_is_reviewed_like_any_other_pr(self):
         self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "is_draft": True}; self.paths.return_value = ["trunk/a.cs"]; self.go(UNET)
         self.pool.submit.assert_called_once(); self.assertNotIn("draft", " ".join(self.slack.texts()).lower().replace("review started", ""))
+
+class AlreadyReviewed(StartReview):
+    def test_the_reply_links_the_existing_review_and_the_next_message_in_the_thread_is_taken_as_the_answer(self):
+        self.review_at.return_value = ("APPROVED", "https://gh/r/9"); state.seen.add(f"{FE}#4626@{'a' * 40}"); self.go()
+        t = self.slack.texts()[0]; self.assertIn("Already reviewed <https://github.com/degreed/fe-workspace/pull/4626> at `aaaaaaa`.", t); self.assertIn("<https://gh/r/9|Approved>", t); self.assertIn("If you still want a fresh run, say so here", t)
+        self.assertIn(("C1", "T"), state.awaiting_link); self.pool.submit.assert_not_called()
+    def test_a_forced_rerun_of_a_reviewed_commit_tells_the_skill_not_to_skip_it_as_a_duplicate(self):
+        state.seen.add(f"{FE}#4626@{'a' * 40}"); self.go(force=True); self.assertTrue(self.pool.submit.call_args[0][6]["rerun"])
+        state.seen.clear(); state.inflight.clear(); self.pool.reset_mock(); self.go(force=True); self.assertNotIn("rerun", self.pool.submit.call_args[0][6], "a first review is not a re-run")
+        p = reviews.prompt("/review-prs-be", "https://github.com/a/b/pull/1", "abc", True, "/t", False, True); self.assertIn("do NOT stop because it is a duplicate", p); self.assertNotIn("do NOT stop because", reviews.prompt("/review-prs-be", "https://github.com/a/b/pull/1", "abc", True, "/t"))
 
 class Queue(StartReview):
     def setUp(self):
@@ -405,6 +415,14 @@ class RunReview(Base):
         self.raw_text = "\n".join([self.event("Bash")]); self.go()
         t = self.slack.texts()[-1]; self.assertIn("did not run a full review", t); self.assertNotIn("ran no review agents", t); self.assertNotIn("quick read", t)
         self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [], "no 'ran NO review agents' DM for a deliberate skip")
+    def test_a_skill_that_stopped_on_purpose_is_explained_not_reported_as_a_missing_review(self):
+        self.posted.return_value = None; self.result = {"result": "I stopped before reviewing: this exact commit was already reviewed.\nDEX_VERDICT: skip", "total_cost_usd": 0.14, "permission_denials": []}
+        state.jobs[self.key]["tokens"] = {"fresh": 1, "cache_read": 1, "output": 1}; self.raw_text = self.event("Bash"); self.go(); t = self.slack.texts()[-1]
+        self.assertIn("<@U1> :information_source: No new review was posted on <https://github.com/degreed/fe-workspace/pull/4626>. The skill stopped on purpose:", t); self.assertIn(">I stopped before reviewing", t)
+        self.assertNotIn("could not find a posted review", t); self.assertEqual(state.jobs[self.key]["outcome"], "not reviewed (nothing posted)"); self.assertEqual(self.slack.reacts[-1]["name"], "information_source")
+        self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [], "no 'ran NO agents' DM for a deliberate stop")
+    def test_a_missing_review_message_keeps_the_link_clean(self):
+        self.posted.return_value = None; self.go(); self.assertIn("on <https://github.com/degreed/fe-workspace/pull/4626>. Please check the PR.", self.slack.texts()[-1])
     def test_a_review_that_ran_no_agents_is_flagged_and_its_log_kept(self):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Bash"), self.event("Read"), json.dumps({"type": "result"})]); self.go()
         self.assertTrue(any("The skill ran no review agents" in t for t in self.slack.texts()), "the thread reply warns"); dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("NO review agents", dm[0]["text"])
