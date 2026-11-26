@@ -36,4 +36,6 @@ Nothing about the author's setup ships in the repo: every identity file (`.env`,
 | [Two accounts research](docs/claude-two-accounts.md) | Background notes on running two Claude accounts |
 | [Open-source plan](docs/open-source-plan.md) | How Dex was made forkable |
 
+Licensed under the [MIT License](LICENSE).
+
 > **Do not restart Dex while a review runs: it kills it.** Details in [docs/operations.md](docs/operations.md#running-it).
