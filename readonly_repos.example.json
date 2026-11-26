@@ -1,4 +1,3 @@
 {
-  "degreed/Degreed": {"clone": "/path/to/existing/clone/Degreed", "default_branch": "main"},
-  "degreed/degreed-assistant": {"clone": "/path/to/existing/clone/degreed-assistant", "default_branch": "main"}
+  "your-org/other-repo": {"clone": "/path/to/other-repo", "default_branch": "main"}
 }

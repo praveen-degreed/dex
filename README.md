@@ -32,6 +32,7 @@ dex/
   ctl.py               the dexctl command
   dashboard.py         the local Dex page (dashboard.html): status, controls, settings
   control.py           the bot's inbox for the page's stop / run / restart commands
+  skills.py            installs the review skills the configured repos need; checks each repo is reviewable (make skills, dexctl skills)
   qa.py                thread-session store, read-only checkouts, the assistant's prompt
   people.py            Slack id -> name + GitHub login (people.json)
   tools_cli.py         the assistant's read-only helper: `bin/botq activity|prs <login>`, `find <keywords>` (org-wide PR search)
@@ -40,22 +41,46 @@ dex/
   handlers.py          Slack event routing
   app.py               startup wiring
   services.py          shared policy and session-store instances
-tests/                 test_policy, test_core, test_flow, test_tools_cli, test_botq_code, test_ctl (unit, no network) and eval_router (real model calls)
-legacy/                the previous single-file bot, kept for reference
+Makefile               make setup | doctor | run | test | skills
+tests/                 test_policy, test_core, test_flow, test_tools_cli, test_botq_code, test_ctl, test_skills (unit, no network; `make test`) and eval_router (real model calls)
 ```
 
-## Setup
-1. Slack app: Socket Mode on. Bot scopes `app_mentions:read`, `chat:write`, `channels:history`, `groups:history`, `reactions:write`; events `message.channels`, `message.groups`, `app_mention`. Invite the bot to the channels.
-2. `cp env.example .env` and fill in `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `OWNER_USER_ID`, `REPOS`; copy `people.example.json` to `people.json` and `readonly_repos.example.json` to `readonly_repos.json` (both optional)
-   (`{"degreed/fe-workspace":{"clone":"/path","skill":"/review-prs"},"degreed/degreed-coach-builder":{"clone":"/path","skill":"/review-prs-be"}}`).
-   More reviewable repos (for example `degreed/degreed-assistant` with `/review-prs-be`) can go in `repos_extra.json` instead of `.env` (see `repos_extra.example.json`).
+## Fork setup (your own Dex, your own identity)
+Dex carries no identity of its own: the Slack app, your Slack id, your GitHub login, your repos and your Claude account are all local
+configuration (every such file is ignored by git), so a fork never inherits anyone else's.
+1. `make setup`: creates the venv, installs the dependencies, copies `env.example` to `.env` and `people.example.json` to `people.json` (only when missing), and installs the review skills your repos need (see "Review skills").
+2. Create the Slack app: Socket Mode on. Bot scopes `app_mentions:read`, `chat:write`, `channels:history`, `groups:history`, `reactions:write`; events `message.channels`, `message.groups`, `app_mention`. Invite the bot to the channels. Its display name is set in the Slack app (`BOT_NAME` only changes how the assistant names itself).
+3. Fill in `.env`: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, **your** `OWNER_USER_ID` (you get the drafts and the alerts), your `GITHUB_ORG` (empty turns the org-wide PR search off), and **only the repos you work on** in `REPOS` (empty is fine: Dex then only answers questions).
+   More repos can go in `repos_extra.json` (see `repos_extra.example.json`), read-only ones in `readonly_repos.json`.
    Optional: `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).
-3. `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`; `gh auth status` and `claude` must work.
-4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Code changes load only on a restart (tmux does not reload code or restart a crashed bot). **Do not restart while a review runs: it kills it** (check `pgrep -fl 'claude.* -p'` first). A killed review leaves nothing posted; send the link again with `force`.
-5. The review skills are installed from GitHub `main` (`install.sh all` from `praveen-degreed/review-skills`, which holds both the FE and the BE skill), not from local files: a skill change takes effect only after it is merged and reinstalled. Each review reads the installed skill fresh, so no Dex restart is needed for that.
+4. `gh auth login` and `claude` (then `/login`). Reviews are posted as whoever `gh` is logged in as.
+5. `make doctor` says what is still missing, then `make run` (or `tmux new -s dex` then `caffeinate -i make run`). Code changes load only on a restart (tmux does not reload code or restart a crashed bot). **Do not restart while a review runs: it kills it** (check `pgrep -fl 'claude.* -p'` first). A killed review leaves nothing posted; send the link again with `force`.
 
-## Reviewing the .NET monolith (`degreed/Degreed`)
-Dex runs one main skill for it, `/review-prs-net` (from the review-skills repo), which routes to the team's own skills in the repo:
+`make help` lists the other targets (`skills`, `skills-update`, `test`).
+
+## Choosing your repos
+Not everyone reviews every repo: list only yours. Each reviewable repo names its skill:
+
+| Repo type | Skill | Extra setting |
+|---|---|---|
+| Frontend | `/review-prs` | none |
+| Python backend | `/review-prs-be` | none |
+| .NET monolith | `/review-prs-net {url}` | `"dex_posts": true` (in `repos_extra.json`) |
+
+A PR link for a repo that is not listed is ignored. At startup a listed repo whose clone is not a git repository, or whose skill is not
+installed, is disabled with a clear log line; the bot still starts.
+
+## Review skills
+The skills live in a public repo (`SKILLS_REPO`, at the branch or tag `SKILLS_REF`). Dex installs the ones your repos need when they
+are missing: at `make setup`, at every start (`SKILLS_AUTO_INSTALL=1`, the default), or on demand with `dexctl skills install`.
+It does a shallow `git clone` (no GitHub login needed) and runs that repo's own `install.sh` for the Claude folder of every account
+(`~/.claude`, and each `config_dir` in `claude_profiles.json`). It only fills in what is missing; `dexctl skills update` (or
+`make skills-update`) reinstalls from `SKILLS_REF`, and the installer keeps one backup per skill. A skill change takes effect after it
+is merged in that repo and reinstalled; no Dex restart is needed, each review reads the installed skill fresh.
+**Security:** this runs a script from `SKILLS_REPO` on your machine, so point it at a repo you trust and pin `SKILLS_REF` to a tag.
+
+## Reviewing a .NET monolith
+Dex runs one main skill for it, `/review-prs-net` (from the skills repo), which routes to the team's own skills in the repo:
 `/dg-maestro-review` when a changed path matches `maestro|aicoach`, otherwise `/dg-pr-review --analysis-only`. Those skills only draft;
 a repo entry (in `repos_extra.json`) with `"dex_posts": true` makes Dex run the skill read-only on a worktree of the PR and then **post
 the draft itself with the skill's decision**: the skill ends its review with `DEX_VERDICT: approve|request_changes|comment`, and Dex posts it with `--approve`, `--request-changes` or `--comment`. `skip` means nothing was reviewed. If no review agent ran, or the verdict is `skip`, **nothing is posted to GitHub**: Dex only tells the requester in the thread. Draft PRs are reviewed like any other. Dex falls back to a comment on the poster's own PR (GitHub does not allow approving your own). A skill string may carry
@@ -188,7 +213,7 @@ With no `policy.json`, **everyone may do everything, unlimited**; usage is still
 ## Tests
 ```
 .venv/bin/python tests/test_policy.py && .venv/bin/python tests/test_claude_env.py && .venv/bin/python tests/test_core.py && .venv/bin/python tests/test_flow.py && .venv/bin/python tests/test_tools_cli.py && .venv/bin/python tests/test_botq_code.py && .venv/bin/python tests/test_ctl.py
-.venv/bin/python tests/eval_router.py     # real model calls (~$0.05)
-tests/check_permissions.py   # real model calls (~$0.9): every skill script and read command is allowed, merge/push/rm/inline-body are not.
+.venv/bin/python tests/eval_router.py     # costs money: real model calls (~$0.05)
+tests/check_permissions.py   # costs money: real model calls (~$1 to $3): every skill script and read command is allowed, merge/push/rm/inline-body are not.
                              # Run it after editing dex/tools.py or updating a review skill.
 ```

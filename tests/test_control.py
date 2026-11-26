@@ -116,8 +116,8 @@ class Page(unittest.TestCase):
 class Inbox(unittest.TestCase):
     def setUp(self): reset()
 
-    def running_review(self, key="degreed/fe-workspace#1@abc", status="running"):
-        state.new_job(key, url="https://github.com/degreed/fe-workspace/pull/1", sha="abc", repo="degreed/fe-workspace", user="U1", channel="C1", thread="9.1")
+    def running_review(self, key="acme/web#1@abc", status="running"):
+        state.new_job(key, url="https://github.com/acme/web/pull/1", sha="abc", repo="acme/web", user="U1", channel="C1", thread="9.1")
         state.update_job(key, status=status)
         with state.lock: state.threads[("C1", "9.1")] = key
         return key
@@ -154,10 +154,10 @@ class Inbox(unittest.TestCase):
         from dex import reviews
         def fake_start(ch, ts, msg_ts, user, m, force):
             self.assertEqual((user, force, m.group(2)), (OWNER, True, "7"))
-            with state.lock: state.threads[(ch, ts)] = "degreed/fe-workspace#7@x"
+            with state.lock: state.threads[(ch, ts)] = "acme/web#7@x"
         with mock.patch.object(reviews, "start_review", side_effect=fake_start):
-            cid = control.submit("run", {"url": "https://github.com/degreed/fe-workspace/pull/7", "force": True}); control.process_once()
-        r = control.result(cid); self.assertTrue(r["ok"]); self.assertEqual(r["job"], "degreed/fe-workspace#7@x")
+            cid = control.submit("run", {"url": "https://github.com/acme/web/pull/7", "force": True}); control.process_once()
+        r = control.result(cid); self.assertTrue(r["ok"]); self.assertEqual(r["job"], "acme/web#7@x")
         self.assertEqual(su.client.posts[0]["channel"], OWNER)
         with mock.patch.object(reviews, "start_review") as start:
             cid = control.submit("run", {"url": "https://example.com/x"}); control.process_once()
@@ -180,7 +180,7 @@ class LiveDetail(unittest.TestCase):
     def setUp(self): reset()
 
     def test_tool_calls_and_agents_are_tracked_for_the_page(self):
-        key = "degreed/fe-workspace#2@abc"; state.new_job(key, url="u", sha="abc", repo="r", user="U1", channel="C", thread="1")
+        key = "acme/web#2@abc"; state.new_job(key, url="u", sha="abc", repo="r", user="U1", channel="C", thread="1")
         ev = lambda **e: json.dumps(e)
         progress.track(key, ev(type="assistant", message={"id": "m1", "content": [{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "gh pr diff 2"}}]}))
         progress.track(key, ev(type="assistant", message={"id": "m2", "content": [{"type": "tool_use", "id": "a1", "name": "Agent", "input": {"subagent_type": "correctness", "description": "check logic"}}]}))

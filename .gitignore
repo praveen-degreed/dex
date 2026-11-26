@@ -23,6 +23,7 @@ tmp/
 qa/
 router_cwd/
 memory/
+control/
 
 # Environment and build output
 .venv/

@@ -4,7 +4,7 @@
     botq prs <github-login> [--state open|merged|all] [--days N]   a person's pull requests
     botq find <keywords...> [--state open|merged|all] [--days N]   PRs across the WHOLE GitHub org, by repo and author
 
-Code and history, read straight from the existing clones in ~/Degreed at origin/main (never the working tree, never a
+Code and history, read straight from the existing clones (the paths in REPOS) at origin/main (never the working tree, never a
 local branch, never uncommitted or unpushed work; nothing is checked out or copied):
     botq ls <repo> [path] [-r]                      botq show <repo> <path> [--from N] [--to M]
     botq grep <repo> <pattern> [--path P] [-i] [--regex]
@@ -104,6 +104,8 @@ def prs(login, state, days):
 
 def find(keywords, state, days, show=25):
     """Search PRs across the whole org. The header always says where it looked, so an answer cannot overstate its scope."""
+    if not config.GITHUB_ORG:
+        return "Org-wide search is off: GITHUB_ORG is not set in .env."
     cmd = ["gh", "search", "prs", "--owner", config.GITHUB_ORG, "--limit", str(LIMIT), "--sort", "updated", "--order", "desc",
            "--json", "repository,number,title,author,isDraft,updatedAt,state,url"]
     if state == "open":

@@ -22,7 +22,7 @@ class Progress(unittest.TestCase):
 
     def test_track_status_and_overview(self):
         state.jobs.clear(); state.qa_active.clear()
-        state.new_job("k", url="https://x/pull/1", sha="abcdef1234", repo="degreed/fe-workspace")
+        state.new_job("k", url="https://x/pull/1", sha="abcdef1234", repo="acme/web")
         self.assertIn("queued (0 ahead", progress.status_text("k"))
         state.update_job("k", status="running", started_at=time.time() - 65)
         progress.track("k", tu("Bash", command="triage.sh")); self.assertIsNone(progress.track("k", "not json"))
@@ -123,7 +123,7 @@ class QA(unittest.TestCase):
         self.assertNotIn("--resume", c); self.assertIn("--bare", c, "bare is the default"); self.assertEqual(c[c.index("--tools") + 1], "Bash", "the only tool is Bash")
         allowed = c[c.index("--allowedTools") + 1]; self.assertTrue(allowed.startswith(f"Bash({tools.BOTQ}:*)")); self.assertNotIn("Read", allowed); self.assertNotIn("git -C", allowed)
         flat = " ".join(c[c.index("--append-system-prompt") + 1].split())
-        for needle in ("Ada Lovelace", "ada-l", tools.BOTQ, "[From:", "ONE simple command per call", "origin/main", "Ask questions when they help", "fe-workspace (degreed/fe-workspace", "degreed-api-version-2"): self.assertIn(needle, flat)
+        for needle in ("Ada Lovelace", "ada-l", tools.BOTQ, "[From:", "ONE simple command per call", "origin/main", "Ask questions when they help", "web (acme/web", "repos you were not given above"): self.assertIn(needle, flat)
         self.assertNotIn(str(config.QA_DIR), flat, "no checkout paths exist any more"); self.assertEqual(qa.build_command("q", "sid9")[-2:], ["--resume", "sid9"]); self.assertNotIn("--max-budget-usd", qa.build_command("q", None))
         c = qa.build_command("q", "s", 0.5); self.assertEqual(c[c.index("--max-budget-usd") + 1], "0.5"); self.assertEqual(c[-2:], ["--resume", "s"])
 
@@ -150,13 +150,13 @@ class Fetch(unittest.TestCase):
         with mock.patch.object(qa.subprocess, "run", side_effect=subprocess.CalledProcessError(1, "git", stderr=b"fatal: no access")): qa._fetch_one("x/y", {"clone": "/nope"})
     def test_the_prompt_lists_repos_by_name_and_states_the_scope_rules(self):
         flat = " ".join(qa.system_prompt().split())
-        for needle in ("fe-workspace (degreed/fe-workspace, default branch main)", "whole `degreed`", "find <keywords...>", "ALWAYS say where you looked", "Never answer \"nobody\"", "unpushed work are never visible"): self.assertIn(needle, flat)
+        for needle in ("web (acme/web, default branch main)", "whole `acme`", "find <keywords...>", "ALWAYS say where you looked", "Never answer \"nobody\"", "unpushed work are never visible"): self.assertIn(needle, flat)
         self.assertNotIn("/qa/", flat)
     def test_readonly_repos_file_and_precedence(self):
         f = Path(_env.DATA) / "readonly_repos.json"
-        f.write_text(json.dumps({"Degreed/Degreed": {"clone": "/x/mono"}, "degreed/fe-workspace": {"clone": "/x/other"}, "bad": "nope", "nocl": {}}))
-        ro = config._readonly_repos(); self.assertEqual(list(ro), ["degreed/degreed", "degreed/fe-workspace"], "lowercased; entries without a clone dropped")
-        merged = {**ro, **config.REPOS}; self.assertEqual(merged["degreed/fe-workspace"]["clone"], "/nonexistent/fe", "reviewable repos win a name clash")
+        f.write_text(json.dumps({"acme/Mono": {"clone": "/x/mono"}, "acme/web": {"clone": "/x/other"}, "bad": "nope", "nocl": {}}))
+        ro = config._readonly_repos(); self.assertEqual(list(ro), ["acme/mono", "acme/web"], "lowercased; entries without a clone dropped")
+        merged = {**ro, **config.REPOS}; self.assertEqual(merged["acme/web"]["clone"], "/nonexistent/fe", "reviewable repos win a name clash")
         f.write_text("{bad"); self.assertEqual(config._readonly_repos(), {}); f.unlink(); self.assertEqual(config._readonly_repos(), {})
 
 

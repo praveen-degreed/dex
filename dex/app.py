@@ -7,7 +7,7 @@ import time
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from . import config, control, handlers, qa, runtime, services, state
+from . import config, control, handlers, qa, runtime, services, skills, state
 from . import slack_utils as su
 
 log = logging.getLogger("dex")
@@ -27,6 +27,7 @@ def housekeeping(interval=1800):
 
 def main():
     config.setup_logging()
+    skills.ensure(config, log)  # install missing review skills; disable repos that cannot be reviewed (never stops the bot)
     app = App(token=os.environ["SLACK_BOT_TOKEN"])
     su.init(app.client, own_id=app.client.auth_test().get("user_id"))
     app.event({"type": "message"})(handlers.handle)

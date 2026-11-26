@@ -18,7 +18,7 @@ OWNER = os.environ["OWNER_USER_ID"]
 # Optional hard filter on who may talk to the bot at all. Empty = anyone. Finer control lives in policy.json.
 ALLOWED = set(filter(None, os.environ.get("ALLOWED_USERS", "").split(",")))
 # {"owner/repo": {"clone": "/path", "skill": "/review-prs", "default_branch": "main"}}, keys lowercased
-REPOS = {k.lower(): v for k, v in json.loads(os.environ["REPOS"]).items()}
+REPOS = {k.lower(): v for k, v in json.loads(os.environ.get("REPOS") or "{}").items()}
 # More reviewable repos without touching .env: repos_extra.json in the data dir, same shape (not secret, ignored by git).
 try:
     _extra = json.loads((DATA / "repos_extra.json").read_text())
@@ -27,7 +27,7 @@ except (OSError, ValueError):
 REPOS.update({k.lower(): v for k, v in _extra.items() if isinstance(v, dict) and v.get("clone") and v.get("skill")} if isinstance(_extra, dict) else {})
 
 BOT_NAME = os.environ.get("BOT_NAME", "Dex")  # how the assistant names itself in its prompts; the Slack name is set in the Slack app
-GITHUB_ORG = os.environ.get("GITHUB_ORG", "degreed")  # org-wide searches ("is anyone working on X") run over this org
+GITHUB_ORG = os.environ.get("GITHUB_ORG", "")  # org-wide searches ("is anyone working on X") run over this org; empty = that search is off
 
 
 def _readonly_repos():
@@ -61,12 +61,3 @@ for _d in (DRAFTS, WORKTREES, TMPS, QA_DIR, LESSONS.parent):
 def setup_logging():
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
-
-def repo_key(name):
-    """Map a short repo name ('fe-workspace') or full name ('degreed/fe-workspace') to a REPOS key, or None."""
-    n = (name or "").strip().lower()
-    if not n:
-        return None
-    if n in REPOS:
-        return n
-    return next((k for k in REPOS if k.split("/")[-1] == n.split("/")[-1]), None)
