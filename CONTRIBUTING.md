@@ -13,4 +13,4 @@ Changes come in as pull requests; nobody pushes to `main` directly.
 - **`dex/tools.py` is the safety boundary** (which commands a review or an answer may run). A change there needs a test, and
   `tests/check_permissions.py` should be run after it. That script makes real model calls and costs money (about $1 to $3), so it is not part of `make test`.
 - `tests/eval_router.py` also calls the real model (about $0.05); run it when you change the router prompt.
-- Keep the README in step with behaviour you change.
+- Keep the docs in step with behaviour you change: the README is a short front page, the detail lives in `docs/`.

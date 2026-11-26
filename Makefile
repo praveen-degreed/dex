@@ -28,7 +28,7 @@ files:
 setup: venv files skills
 	@echo ""
 	@echo "Still yours to do (Dex cannot do these for you):"
-	@echo "  1. Create the Slack app (README, Setup step 1) and put its two tokens and your Slack id in .env"
+	@echo "  1. Create the Slack app (docs/slack-app.md) and put its two tokens and your Slack id in .env"
 	@echo "  2. Put your repos in .env (REPOS) or repos_extra.json, and your GitHub org in .env (GITHUB_ORG)"
 	@echo "  3. gh auth login     and     claude   (then /login)"
 	@echo "  4. make doctor, then make run"
