@@ -105,6 +105,8 @@ def install(repos, data_dir, update=False, log=print):
     if not todo:
         return []
     repo, ref, _ = settings()
+    if repo == DEFAULT_REPO:
+        return ["SKILLS_REPO is not set in .env (the public repo that holds the review skills): set it, then run `dexctl skills install`"]
     problems = []
     try:
         src = fetch_source(data_dir, repo, ref)
