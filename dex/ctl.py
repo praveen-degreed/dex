@@ -30,7 +30,7 @@ import sys
 import time
 
 from . import claude_env, config
-from .policy import ALL, COUNTED, edit_file, human
+from .policy import ALL, edit_file, human
 
 POLICY = config.DATA / "policy.json"
 STALE_S = 20  # runtime.json older than this means Dex is not running

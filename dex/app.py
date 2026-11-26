@@ -7,7 +7,7 @@ import time
 from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 
-from . import config, control, handlers, qa, runtime, services, skills, state
+from . import config, control, handlers, qa, runtime, services, skills
 from . import slack_utils as su
 
 log = logging.getLogger("dex")

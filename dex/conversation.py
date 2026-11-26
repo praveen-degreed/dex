@@ -2,7 +2,6 @@
 history and GitHub (see qa.py). The assistant asks a clarifying question itself when it needs one; the person's
 reply lands in the same thread and resumes the same session."""
 import logging
-import os
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor

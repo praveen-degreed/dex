@@ -6,14 +6,13 @@ reports "started" and "done" in Slack.
 import datetime
 import json
 import logging
-import os
 import re
 import shutil
 import subprocess
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-from . import claude_env, config, github, progress, services, state
+from . import claude_env, config, github, services, state
 from .github import canonical
 from .limits import limit_active, limit_text, note_limit
 from . import slack_utils as su
