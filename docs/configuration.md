@@ -21,7 +21,7 @@ Every identity-bearing file is local and ignored by git, so a fork never inherit
 | `OWNER_USER_ID` | **Your** Slack member id. The owner gets the drafts and the alerts and can do everything | required |
 | `GITHUB_ORG` | Your org; "is anyone working on X" searches run over it | empty = that search is off |
 | `REPOS` | `{"owner/name": {"clone": "/path/to/clone", "skill": "/review-prs"}}`: only the repos you work on | empty = questions only |
-| `SKILLS_REPO`, `SKILLS_REF`, `SKILLS_AUTO_INSTALL` | Where the review skills come from: see [skills-and-repos.md](skills-and-repos.md) | placeholder, `main`, `1` |
+| `SKILLS_REPO`, `SKILLS_REF`, `SKILLS_AUTO_INSTALL` | Where the review skills come from: see [skills-and-repos.md](skills-and-repos.md) | `praveen-degreed/review-skills`, `main`, `1` |
 | `BOT_NAME` | How the assistant names itself in its prompts (the Slack name is set in the Slack app) | `Dex` |
 | `ALLOWED_USERS` | Comma-separated Slack ids allowed to talk to the bot | empty = anyone |
 | `JOB_TIMEOUT_MIN` / `QA_TIMEOUT_MIN` | One review / one answer | `45` / `10` |

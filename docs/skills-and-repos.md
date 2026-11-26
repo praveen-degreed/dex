@@ -13,7 +13,7 @@ A PR link for a repo that is not listed is ignored. At startup a listed repo who
 disabled with a clear log line; the bot still starts. Repos the assistant may only read go in `readonly_repos.json`.
 
 ## Automatic skill install
-The skills live in a public repo (`SKILLS_REPO`, at the branch or tag `SKILLS_REF`). Dex installs the ones your repos need **when they are missing**:
+The skills live in a public repo (`SKILLS_REPO`, default `praveen-degreed/review-skills`, at the branch or tag `SKILLS_REF`). Dex installs the ones your repos need **when they are missing**:
 at `make setup`, at every start (`SKILLS_AUTO_INSTALL=1`, the default) or on demand with `dexctl skills install`.
 
 - It does a shallow `git clone` (no GitHub login needed) and runs that repo's own `install.sh` for the Claude folder of every account (`~/.claude`, and each `config_dir` in `claude_profiles.json`).
