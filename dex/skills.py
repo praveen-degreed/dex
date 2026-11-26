@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 
 KINDS = {"review-prs": "fe", "review-prs-be": "be", "review-prs-net": "net"}  # skill folder -> installer argument
-DEFAULT_REPO = "your-org/review-skills"
+DEFAULT_REPO = "praveen-degreed/review-skills"  # the public skills repo; override with SKILLS_REPO (a fork, or after it moves)
 TIMEOUT_S = 180
 
 
@@ -105,8 +105,6 @@ def install(repos, data_dir, update=False, log=print):
     if not todo:
         return []
     repo, ref, _ = settings()
-    if repo == DEFAULT_REPO:
-        return ["SKILLS_REPO is not set in .env (the public repo that holds the review skills): set it, then run `dexctl skills install`"]
     problems = []
     try:
         src = fetch_source(data_dir, repo, ref)

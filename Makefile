@@ -26,11 +26,11 @@ files:
 	@[ -f people.json ] || { cp people.example.json people.json && echo "created people.json: replace the examples with your teammates (optional)"; }
 
 setup: venv files
-	@$(PY) -m dex.skills install || echo "(review skills not installed yet: set SKILLS_REPO and REPOS in .env, then run make skills)"
+	@$(PY) -m dex.skills install || echo "(review skills not installed yet: check REPOS in .env and your network, then run make skills)"
 	@echo ""
 	@echo "Still yours to do (Dex cannot do these for you):"
 	@echo "  1. Create the Slack app (docs/slack-app.md) and put its two tokens and your Slack id in .env"
-	@echo "  2. In .env: your repos (REPOS, or repos_extra.json), GITHUB_ORG, and SKILLS_REPO (the public repo with the review skills)"
+	@echo "  2. In .env: your repos (REPOS, or repos_extra.json) and GITHUB_ORG (the review skills install by themselves)"
 	@echo "  3. gh auth login     and     claude   (then /login)"
 	@echo "  4. make doctor, then make run"
 
