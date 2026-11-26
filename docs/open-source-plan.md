@@ -1,7 +1,8 @@
 # Plan: make Dex forkable and open internally
 
 Status (2026-11-26): phases 1 to 6 implemented on branch `queue-all-prs`, uncommitted; `make test` passes (9 files).
-Not done, waiting on a decision: `TODO.md` cut-down, `LICENSE`, `dexctl init`, the `review-skills` public-repo scan, branch protection.
+Done since: `LICENSE` (MIT, Degreed, Inc.), `TODO.md` removed from the repo (kept locally, git-ignored).
+Not done, waiting on a decision: `dexctl init`, the `review-skills` public-repo scan, branch protection.
 
 ## Goal
 Anyone at the company can fork Dex, run `make setup`, and get their own bot with their own identity, their own repos and the

@@ -34,3 +34,6 @@ __pycache__/
 # The previous single-file bot, kept locally for reference only
 legacy/
 limits.jsonl
+
+# Personal work log, kept locally only
+TODO.md
