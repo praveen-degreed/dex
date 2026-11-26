@@ -74,7 +74,7 @@ def env_for(policy, kind, extra=None, base=None):
         cfg = Path(os.path.expanduser(str(prof["config_dir"])))
         if not cfg.is_dir():
             raise ClaudeProfileError(f"Claude profile '{name}': its config dir {cfg} does not exist. Create it, log in with "
-                                     f"`CLAUDE_CONFIG_DIR={cfg} claude` (then /login) and install the skills there (see the README).")
+                                     f"`CLAUDE_CONFIG_DIR={cfg} claude` (then /login) and install the skills there (see docs/claude-accounts.md).")
         env["CLAUDE_CONFIG_DIR"] = str(cfg)
     env.update(extra or {})
     return env
