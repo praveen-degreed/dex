@@ -24,6 +24,7 @@ qa/
 router_cwd/
 memory/
 control/
+skills-src/
 
 # Environment and build output
 .venv/
