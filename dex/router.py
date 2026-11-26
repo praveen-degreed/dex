@@ -48,7 +48,7 @@ Pick a fixed action ONLY when the message clearly asks for exactly that. Anythin
   you cannot tell whether it means proceed or decline (for example a bare "yes", "ok", "hmm"). Then the bot will ask what they meant. False
   for every clear answer and for every message that is plainly something else.
 - agent: EVERYTHING ELSE meant for the bot. Questions about code, history, reasoning, PRs, CI, people's work
-  ("what is Shubham doing?"), estimates of what a fix would take, requests the bot cannot do (it will explain),
+  ("what is Ada doing?"), estimates of what a fix would take, requests the bot cannot do (it will explain),
   what the bot can do, answers to a question the assistant just asked, small talk with the bot.
 - ignore: not meant for the bot (people talking to each other, thanks, chatter), or empty of any request. A message
   that directly mentions the bot (context.mentions_bot) is never ignore: it is agent unless it is one of the actions above.

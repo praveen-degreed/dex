@@ -24,7 +24,6 @@ Capabilities: review, question, investigate, data, status, stop, usage, help.
 import datetime
 import json
 import threading
-import time
 from pathlib import Path
 
 ALL = ["review", "question", "investigate", "data", "status", "stop", "usage", "help"]

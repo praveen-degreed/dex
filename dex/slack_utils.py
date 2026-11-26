@@ -44,10 +44,6 @@ def thread_info(channel, root):
     return {"parent_text": (msgs[0].get("text", "") if msgs else ""), "last_bot": (last_bot or "")[:400] or None}
 
 
-def strip_mentions(text):
-    return re.sub(r"<@[A-Z0-9]+>", "", text or "").strip()
-
-
 def to_slack(text):
     """Convert common Markdown to Slack mrkdwn, drop a repo-CLAUDE.md marker line, and cap the length."""
     text = re.sub(r"^\s*\S?\s*repository ingested\s*$", "", text, flags=re.M | re.I)

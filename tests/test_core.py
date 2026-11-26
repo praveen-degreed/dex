@@ -194,7 +194,6 @@ class SlackUtils(unittest.TestCase):
         self.assertEqual(su.to_slack("✅ repository ingested\n\nThe answer."), "The answer.")
         self.assertEqual(su.to_slack("mentions repository ingested pipeline inline"), "mentions repository ingested pipeline inline")
         self.assertTrue(su.to_slack("x" * 9000).endswith("…(truncated)") and len(su.to_slack("x" * 9000)) <= 3500)
-        self.assertEqual(su.strip_mentions("<@U1ABC> who changed this? <@U2>"), "who changed this?")
     def test_render_mentions(self):
         (Path(_env.DATA) / "people.json").write_text(json.dumps({"U06": {"name": "Pat", "github": "pat-d"}, "U07": {"name": "Sam"}}))
         from dex import people; os.utime(Path(_env.DATA) / "people.json", (time.time() + 20, time.time() + 20)); su.bot_id = "UBOT"
