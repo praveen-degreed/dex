@@ -22,6 +22,17 @@ def skill_roots():
     return roots
 BOTQ = str(Path(__file__).resolve().parent.parent / "bin" / "botq")  # read-only helper commands for the assistant
 
+def skill_names():
+    """The skill folders whose scripts a review may run: the three shipped skills plus any skill a configured repo names."""
+    names = {"review-prs", "review-prs-be", "review-prs-net"}
+    try:
+        from . import config
+        names |= {c["skill"].split()[0].lstrip("/") for c in config.ALL_REPOS.values() if isinstance(c.get("skill"), str) and c["skill"].split()}
+    except Exception:  # noqa: BLE001  (config needs the environment; without it only the shipped skills are allowed)
+        pass
+    return sorted(names)
+
+
 REVIEW_READ = [
     "Read", "Grep", "Glob", "Skill", "Agent",
     "Bash(gh pr view:*)", "Bash(gh pr diff:*)", "Bash(gh pr checks:*)", "Bash(gh pr list:*)", "Bash(gh repo view:*)",
@@ -32,7 +43,7 @@ REVIEW_READ = [
     "Bash(git -C * grep *)", "Bash(git -C * log *)", "Bash(git -C * show *)", "Bash(git -C * diff *)", "Bash(git -C * blame *)",
     "Bash(git -C * ls-files *)", "Bash(git -C * rev-parse *)", "Bash(git -C * status *)",
     # `/*`, not `/:*`: the `:*` form needs a space after the prefix, so it never matched `.../scripts/name.sh` (verified).
-    *[f"Bash({root}/{name}/scripts/*)" for root in skill_roots() for name in ("review-prs", "review-prs-be", "review-prs-net")],
+    *[f"Bash({root}/{name}/scripts/*)" for root in skill_roots() for name in skill_names()],
     "Bash(git rev-parse:*)", "Bash(git fetch:*)", "Bash(cat:*)",
     # Read-only helpers the skills chain with the commands above (`cd x && script`, `ls | head`). A chained call is allowed
     # only when every part matches a rule, and paths must stay inside the run's directory (verified: tests/check_permissions.py).

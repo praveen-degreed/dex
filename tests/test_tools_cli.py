@@ -26,7 +26,7 @@ class Botq(unittest.TestCase):
         calls = []
         with mock.patch.object(tools_cli.subprocess, "run", fake_run(calls)), mock.patch.object(tools_cli, "since", lambda d: "2026-11-01"):
             rc, out, _ = cli("activity", "ann-g", "--days", "14")
-        self.assertEqual(rc, 0); self.assertIn("== degreed/fe-workspace ==", out); self.assertIn("== degreed/degreed-coach-builder ==", out)
+        self.assertEqual(rc, 0); self.assertIn("== acme/web ==", out); self.assertIn("== acme/api ==", out)
         self.assertIn("#2 [draft] fresh", out); self.assertNotIn("#3 ", out, "stale PRs are not listed one by one")
         self.assertIn("+ 2 older open PRs not updated since before 2026-11-01 (1 drafts; least recently updated 2026-05-01)", out)
         self.assertIn("Merged in the last 14 days (1):", out); self.assertIn("#9 needs eyes | by bob", out)
@@ -66,18 +66,18 @@ class Find(unittest.TestCase):
             rc, out, err = cli("find", *argv)
         return rc, out, err, calls
     def test_groups_by_repo_and_author_and_states_its_scope(self):
-        hits = [search_hit("degreed/Degreed", 57490, "PD-129390 - Maestro ReBAC", "sudha", "2026-11-15T10:00:00Z"), search_hit("degreed/fe-workspace", 4460, "ReBAC gating", "praveen", "2026-11-14T10:00:00Z", draft=True), search_hit("degreed/Degreed", 5, "other", "sudha", "2026-11-01T10:00:00Z")]
+        hits = [search_hit("acme/Mono", 57490, "PD-129390 - Maestro ReBAC", "ada", "2026-11-15T10:00:00Z"), search_hit("acme/web", 4460, "ReBAC gating", "alan", "2026-11-14T10:00:00Z", draft=True), search_hit("acme/Mono", 5, "other", "ada", "2026-11-01T10:00:00Z")]
         rc, out, _, calls = self.run_find(hits, "rebac", "maestro")
-        self.assertEqual(rc, 0); self.assertIn("Searched open PRs across the whole `degreed` GitHub org for: rebac maestro", out)
-        self.assertIn("3 result(s). By repo: degreed/Degreed 2, degreed/fe-workspace 1", out); self.assertIn("By author: sudha 2, praveen 1", out)
-        self.assertIn("degreed/fe-workspace#4460 [draft] ReBAC gating | praveen | open", out)
-        c = calls[0]; self.assertEqual(c[:4], ["gh", "search", "prs", "--owner"]); self.assertEqual(c[4], "degreed"); self.assertEqual(c[-2:], ["--", "rebac maestro"], "the query follows `--`, so a term can never be read as a flag")
+        self.assertEqual(rc, 0); self.assertIn("Searched open PRs across the whole `acme` GitHub org for: rebac maestro", out)
+        self.assertIn("3 result(s). By repo: acme/Mono 2, acme/web 1", out); self.assertIn("By author: ada 2, alan 1", out)
+        self.assertIn("acme/web#4460 [draft] ReBAC gating | alan | open", out)
+        c = calls[0]; self.assertEqual(c[:4], ["gh", "search", "prs", "--owner"]); self.assertEqual(c[4], "acme"); self.assertEqual(c[-2:], ["--", "rebac maestro"], "the query follows `--`, so a term can never be read as a flag")
         self.assertNotIn("--updated", c)
     def test_state_and_days_flags(self):
         _, _, _, calls = self.run_find([], "x", "--state", "merged", "--days", "30"); self.assertIn("--merged", calls[0]); self.assertEqual(calls[0][calls[0].index("--updated") + 1], ">=2026-10-01")
         _, _, _, calls = self.run_find([], "x", "--state", "all"); self.assertNotIn("--merged", calls[0]); self.assertNotIn("--state", calls[0])
     def test_no_results_still_says_where_it_looked(self):
-        _, out, _, _ = self.run_find([], "nonesuch"); self.assertIn("Searched open PRs across the whole `degreed` GitHub org for: nonesuch", out); self.assertIn("No results", out)
+        _, out, _, _ = self.run_find([], "nonesuch"); self.assertIn("Searched open PRs across the whole `acme` GitHub org for: nonesuch", out); self.assertIn("No results", out)
     def test_cap_is_reported(self):
         _, out, _, _ = self.run_find([search_hit("a/b", i, f"t{i}", "u", "2026-11-14T10:00:00Z") for i in range(tools_cli.LIMIT)], "x")
         self.assertIn(f"{tools_cli.LIMIT}+ result(s)", out); self.assertIn("capped", out); self.assertLessEqual(out.count("a/b#"), 25, "only the newest 25 are listed")

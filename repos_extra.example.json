@@ -1,11 +1,11 @@
 {
-  "degreed/some-repo": {
-    "clone": "/path/to/some-repo",
+  "your-org/python-service": {
+    "clone": "/path/to/python-service",
     "skill": "/review-prs-be",
     "default_branch": "main"
   },
-  "degreed/some-dotnet-repo": {
-    "clone": "/path/to/repo",
+  "your-org/dotnet-monolith": {
+    "clone": "/path/to/dotnet-monolith",
     "skill": "/review-prs-net {url}",
     "dex_posts": true,
     "default_branch": "main"

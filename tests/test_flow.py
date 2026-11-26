@@ -8,7 +8,7 @@ from dex import slack_utils as su
 from dex.claude_runner import BudgetExceeded, Stopped
 from dex.policy import Policy
 
-OWNER = "UOWNER"; U4626 = "https://github.com/degreed/fe-workspace/pull/4626"; FE = "degreed/fe-workspace"; CB = "degreed/degreed-coach-builder"
+OWNER = "UOWNER"; U4626 = "https://github.com/acme/web/pull/4626"; FE = "acme/web"; CB = "acme/api"
 
 class FakeClient:
     def __init__(self): self.posts, self.reacts, self.unreacts = [], [], []
@@ -50,7 +50,7 @@ class Routing(Base):
         ctx = self.router_calls[0][1]; self.assertTrue(ctx["thread"]["is_review_thread"]); self.assertEqual(ctx["thread"]["review_status"], "running")
         self.assertEqual(ctx["thread"]["parent_pr_url"], U4626); self.assertEqual(ctx["thread"]["last_bot_message"], "earlier answer")
     def test_router_gets_known_review_jobs_for_links_in_the_message(self):
-        state.jobs["k"] = {"url": U4626, "status": "running"}; state.jobs["z"] = {"url": "https://github.com/degreed/fe-workspace/pull/1", "status": "done"}
+        state.jobs["k"] = {"url": U4626, "status": "running"}; state.jobs["z"] = {"url": "https://github.com/acme/web/pull/1", "status": "done"}
         self.verdict = V("ignore"); handlers.handle(ev(text=f"<@BOT> how far along is {U4626}"))
         self.assertEqual(self.router_calls[0][1]["known_review_jobs"], [{"url": U4626, "status": "running"}], "only jobs for links in the message")
     def test_not_addressed_never_calls_router(self):
@@ -112,21 +112,21 @@ class Routing(Base):
         handlers.handle(ev(type_="message", text="<@BOT|Review Bot> review again", ts="6.2", thread_ts="T")); self.assertTrue(self.router_calls[-1][1]["mentions_bot"]); self.start_review.assert_called_once()
         self.start_review.reset_mock(); handlers.handle(ev(type_="app_mention", text="<@BOT|Review Bot> review again", ts="6.2", thread_ts="T")); self.start_review.assert_not_called()  # the twin is deduped
     def test_an_http_link_wrapped_in_slack_formatting_is_found_and_normalised_to_https(self):
-        self.verdict = V("review"); handlers.handle(ev(text="<@BOT> *<http://github.com/degreed/Degreed/pull/58217|github.com/degreed/Degreed/pull/58217>*", ts="9.1"))
-        self.assertNotIn("Which PR", " ".join(self.slack.texts())); m = self.start_review.call_args[0][4]; self.assertEqual((m.group(1), m.group(2)), ("degreed/Degreed", "58217"))
-        from dex.github import canonical; self.assertEqual(canonical(m), "https://github.com/degreed/Degreed/pull/58217")
-        self.assertEqual(self.router_calls[-1][1]["pr_urls_in_message"], ["https://github.com/degreed/Degreed/pull/58217"])
+        self.verdict = V("review"); handlers.handle(ev(text="<@BOT> *<http://github.com/acme/Mono/pull/58217|github.com/acme/Mono/pull/58217>*", ts="9.1"))
+        self.assertNotIn("Which PR", " ".join(self.slack.texts())); m = self.start_review.call_args[0][4]; self.assertEqual((m.group(1), m.group(2)), ("acme/Mono", "58217"))
+        from dex.github import canonical; self.assertEqual(canonical(m), "https://github.com/acme/Mono/pull/58217")
+        self.assertEqual(self.router_calls[-1][1]["pr_urls_in_message"], ["https://github.com/acme/Mono/pull/58217"])
     def test_after_asking_which_pr_the_next_plain_message_with_a_link_in_that_thread_is_taken(self):
         self.verdict = V("review"); handlers.handle(ev(text="<@BOT> review this please", ts="10.1")); self.assertIn("Which PR", self.slack.texts()[-1]); self.start_review.assert_not_called()
-        self.verdict = V("review"); handlers.handle(ev(type_="message", text="<http://github.com/degreed/Degreed/pull/58217|link>", ts="10.2", thread_ts="10.1"))
+        self.verdict = V("review"); handlers.handle(ev(type_="message", text="<http://github.com/acme/Mono/pull/58217|link>", ts="10.2", thread_ts="10.1"))
         self.start_review.assert_called_once(); self.assertNotIn(("C1", "10.1"), state.awaiting_link)
     def test_a_plain_message_in_a_thread_i_did_not_ask_anything_in_is_still_ignored(self):
-        handlers.handle(ev(type_="message", text="<http://github.com/degreed/Degreed/pull/58217|link>", ts="11.2", thread_ts="11.1")); self.start_review.assert_not_called(); self.assertEqual(self.router_calls, [])
+        handlers.handle(ev(type_="message", text="<http://github.com/acme/Mono/pull/58217|link>", ts="11.2", thread_ts="11.1")); self.start_review.assert_not_called(); self.assertEqual(self.router_calls, [])
     def test_review_link_from_thread_parent(self):
         self.info = {"parent_text": f"please see {U4626}", "last_bot": None}; self.verdict = V("review")
         handlers.handle(ev(text="<@BOT> review this", thread_ts="T", ts="4.4")); self.assertEqual(self.start_review.call_args[0][4].group(0), U4626)
     def test_several_links_each_start_a_review_once_in_order_with_no_cap(self):
-        base = "https://github.com/degreed/fe-workspace/pull/"
+        base = "https://github.com/acme/web/pull/"
         self.verdict = V("review"); handlers.handle(ev(text=f"<@BOT> review {base}1 {base}2 {base}1 {base}3", ts="7.7"))
         self.assertEqual([c[0][4].group(0) for c in self.start_review.call_args_list], [base + "1", base + "2", base + "3"])
         self.assertIn("3 PRs", self.slack.texts()[0])
@@ -191,13 +191,13 @@ class StartReview(Base):
         self.assertEqual(state.jobs[f"{FE}#4626@{'a' * 40}"]["status"], "queued"); self.assertEqual(state.threads[("C1", "T")], f"{FE}#4626@{'a' * 40}")
         self.assertIn("Review started", self.slack.texts()[0]); self.assertEqual(self.slack.reacts[0]["name"], "eyes"); self.assertIn("review 1", services.policy.summary("U1"))
 
-NET = "degreed/degreed"; UNET = "https://github.com/degreed/Degreed/pull/57415"
+NET = "acme/mono"; UNET = "https://github.com/acme/Mono/pull/57415"
 NET_CFG = {"clone": "/x/net", "skill": "/dg-pr-review {number} --analysis-only", "maestro_skill": "/dg-maestro-review {number}", "dex_posts": True}
 
 class BigPr(StartReview):
     def big(self, files=137, adds=11561, dels=6544): self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False, "files": files, "additions": adds, "deletions": dels}
     def test_a_big_pr_is_asked_about_first_and_nothing_runs(self):
-        self.big(); self.go(); t = self.slack.texts()[0]; self.assertTrue(t.startswith("<@U1> https://github.com/degreed/fe-workspace/pull/4626 is big (137 files, +11561/-6544 lines)"), t)
+        self.big(); self.go(); t = self.slack.texts()[0]; self.assertTrue(t.startswith("<@U1> https://github.com/acme/web/pull/4626 is big (137 files, +11561/-6544 lines)"), t)
         self.assertIn("Can it be split?", t); self.assertIn("review it fully", t); self.pool.submit.assert_not_called(); self.assertNotIn(f"{FE}#4626@{'a' * 40}", state.seen)
         self.assertEqual(len(state.pending_big[("C1", "T")]), 1); self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "asked_big")
     def test_small_prs_and_the_owner_force_are_not_asked(self):
@@ -236,9 +236,9 @@ class DotNetRepo(StartReview):
     def setUp(self):
         super().setUp(); config.REPOS[NET] = dict(NET_CFG); self.addCleanup(config.REPOS.pop, NET, None); self.paths = mock.patch("dex.github.pr_paths").start()
     def test_a_maestro_pr_gets_the_maestro_skill_and_a_normal_one_the_general_skill(self):
-        self.paths.return_value = ["trunk/Degreed.Common.Standard/Services/Maestro/MaestroFieldConfig.cs", "README.md"]; self.go(UNET)
+        self.paths.return_value = ["trunk/Acme.Common.Standard/Services/Maestro/MaestroFieldConfig.cs", "README.md"]; self.go(UNET)
         self.assertEqual(self.pool.submit.call_args[0][6]["skill"], "/dg-maestro-review {number}")
-        self.pool.reset_mock(); state.seen.clear(); state.inflight.clear(); self.paths.return_value = ["trunk/Degreed.Core/Orders/OrderService.cs"]; self.go(UNET, force=True)
+        self.pool.reset_mock(); state.seen.clear(); state.inflight.clear(); self.paths.return_value = ["trunk/Acme.Core/Orders/OrderService.cs"]; self.go(UNET, force=True)
         self.assertEqual(self.pool.submit.call_args[0][6]["skill"], "/dg-pr-review {number} --analysis-only")
     def test_a_pr_that_changes_claude_files_is_refused_unless_the_owner_forces_it(self):
         self.paths.return_value = ["trunk/a.cs", ".claude/skills/dg-pr-review/SKILL.md"]; self.go(UNET)
@@ -255,7 +255,7 @@ class DraftPr(DotNetRepo):
 class AlreadyReviewed(StartReview):
     def test_the_reply_links_the_existing_review_and_the_next_message_in_the_thread_is_taken_as_the_answer(self):
         self.review_at.return_value = ("APPROVED", "https://gh/r/9"); state.seen.add(f"{FE}#4626@{'a' * 40}"); self.go()
-        t = self.slack.texts()[0]; self.assertIn("Already reviewed <https://github.com/degreed/fe-workspace/pull/4626> at `aaaaaaa`.", t); self.assertIn("<https://gh/r/9|Approved>", t); self.assertIn("If you still want a fresh run, say so here", t)
+        t = self.slack.texts()[0]; self.assertIn("Already reviewed <https://github.com/acme/web/pull/4626> at `aaaaaaa`.", t); self.assertIn("<https://gh/r/9|Approved>", t); self.assertIn("If you still want a fresh run, say so here", t)
         self.assertIn(("C1", "T"), state.awaiting_link); self.pool.submit.assert_not_called()
     def test_a_forced_rerun_of_a_reviewed_commit_tells_the_skill_not_to_skip_it_as_a_duplicate(self):
         state.seen.add(f"{FE}#4626@{'a' * 40}"); self.go(force=True); self.assertTrue(self.pool.submit.call_args[0][6]["rerun"])
@@ -266,20 +266,20 @@ class Queue(StartReview):
     def setUp(self):
         super().setUp(); mock.patch.object(config, "CONCURRENCY", 1).start()  # these tests are about one-at-a-time, whatever .env says
     def test_the_queue_notice_follows_the_concurrency_setting(self):
-        state.new_job("degreed/degreed#58691@x", url="https://github.com/degreed/Degreed/pull/58691", sha="x", repo="degreed/degreed"); state.update_job("degreed/degreed#58691@x", status="running")
+        state.new_job("acme/mono#58691@x", url="https://github.com/acme/Mono/pull/58691", sha="x", repo="acme/mono"); state.update_job("acme/mono#58691@x", status="running")
         with mock.patch.object(config, "CONCURRENCY", 2): self.go(); self.assertTrue(self.slack.texts()[0].startswith("Review started on"), "a second slot is free: no queue")
-        state.new_job("b@b", url="https://github.com/degreed/x/pull/9", sha="b", repo="degreed/x"); state.update_job("b@b", status="running"); state.seen.clear(); state.inflight.clear(); self.slack.posts.clear()
+        state.new_job("b@b", url="https://github.com/acme/x/pull/9", sha="b", repo="acme/x"); state.update_job("b@b", status="running"); state.seen.clear(); state.inflight.clear(); self.slack.posts.clear()
         with mock.patch.object(config, "CONCURRENCY", 2): self.go(force=True); t = self.slack.texts()[0]; self.assertIn("Queued", t); self.assertIn("2 reviews run at a time", t)
     def test_a_review_that_has_to_wait_says_so_with_its_place_and_what_is_ahead(self):
-        state.new_job("degreed/degreed#58691@x", url="https://github.com/degreed/Degreed/pull/58691", sha="x", repo="degreed/degreed"); state.update_job("degreed/degreed#58691@x", status="running")
-        self.go(); t = self.slack.texts()[0]; self.assertIn("<@U1> Queued:", t); self.assertIn("#1 in line", t); self.assertIn("behind degreed/Degreed#58691", t); self.assertIn("the moment yours starts", t)
+        state.new_job("acme/mono#58691@x", url="https://github.com/acme/Mono/pull/58691", sha="x", repo="acme/mono"); state.update_job("acme/mono#58691@x", status="running")
+        self.go(); t = self.slack.texts()[0]; self.assertIn("<@U1> Queued:", t); self.assertIn("#1 in line", t); self.assertIn("behind acme/Mono#58691", t); self.assertIn("the moment yours starts", t)
         self.assertTrue(state.jobs[f"{FE}#4626@{'a' * 40}"]["waited"])
-        state.new_job("another@y", url="https://github.com/degreed/x/pull/1", sha="y", repo="degreed/x"); state.seen.clear(); state.inflight.discard(f"{FE}#4626@{'a' * 40}")
+        state.new_job("another@y", url="https://github.com/acme/x/pull/1", sha="y", repo="acme/x"); state.seen.clear(); state.inflight.discard(f"{FE}#4626@{'a' * 40}")
         self.slack.posts.clear(); self.go(force=True); self.assertIn("#2 in line", self.slack.texts()[0]); self.assertIn("and 1 more", self.slack.texts()[0])
     def test_a_review_that_can_start_at_once_just_says_started(self):
         self.go(); self.assertTrue(self.slack.texts()[0].startswith("Review started on")); self.assertFalse(state.jobs[f"{FE}#4626@{'a' * 40}"]["waited"])
     def test_finished_and_questions_do_not_count_as_ahead(self):
-        state.new_job("old@z", url="https://github.com/degreed/x/pull/2", sha="z", repo="degreed/x"); state.update_job("old@z", status="done")
+        state.new_job("old@z", url="https://github.com/acme/x/pull/2", sha="z", repo="acme/x"); state.update_job("old@z", status="done")
         state.new_job("q@q", kind="question"); self.go(); self.assertTrue(self.slack.texts()[0].startswith("Review started on"))
 
 class SizeGuard(StartReview):
@@ -367,7 +367,7 @@ class RunReview(Base):
         self.posted.return_value = ("COMMENTED", "https://gh/review/1"); self.go(); self.assertIn("*Result*  Comments posted  ·  <https://gh/review/1|View the review>", self.slack.texts()[0])
         self.assertEqual(state.jobs[self.key]["status"], "done"); self.assertEqual(self.slack.reacts[-1]["name"], "white_check_mark"); self.assertIn("$0.50", services.policy.summary("U1"))
         a = self.captured["args"]; allowed = a[a.index("--allowedTools") + 1]; self.assertIn("gh pr review", allowed); self.assertIn("Edit(//", allowed); self.assertTrue(self.captured["env"]["TMPDIR"].endswith("/"))
-        self.assertNotIn(self.key, state.inflight); self.assertFalse((config.TMPS / f"degreed_fe-workspace-4626-{'a' * 7}").exists(), "private temp dir removed")
+        self.assertNotIn(self.key, state.inflight); self.assertFalse((config.TMPS / f"acme_web-4626-{'a' * 7}").exists(), "private temp dir removed")
         self.assertEqual(json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1])["decision"], "done")
     def test_the_job_cap_is_passed_and_exceeding_it_stops_cleanly(self):
         self.set_policy({"max_job_usd": {"review": 4}}); state.jobs[self.key]["tokens"] = {"fresh": 100, "cache_read": 2000, "output": 30}; self.result = BudgetExceeded(5.1); self.go()
@@ -402,7 +402,7 @@ class RunReview(Base):
         self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = ("CHANGES_REQUESTED", "L"); self.go(); self.assertIn("review again right here", self.slack.texts()[-1])
         self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertNotIn("review again", self.slack.texts()[-1], "nothing to address after an approval")
     def test_the_requester_is_tagged_when_the_review_ends(self):
-        self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertTrue(self.slack.texts()[-1].startswith(":white_check_mark: <@U1> Your review of <https://github.com/degreed/fe-workspace/pull/4626|degreed/fe-workspace #4626> is done."), self.slack.texts()[-1])
+        self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertTrue(self.slack.texts()[-1].startswith(":white_check_mark: <@U1> Your review of <https://github.com/acme/web/pull/4626|acme/web #4626> is done."), self.slack.texts()[-1])
         self.slack.posts.clear(); state.seen.add(self.key); self.posted.return_value = None; self.go(); self.assertTrue(self.slack.texts()[-1].startswith("<@U1> Review finished but"))
         self.slack.posts.clear(); state.seen.add(self.key); self.result = RuntimeError("boom"); self.go(); self.assertIn("<@U1> Review of", self.slack.texts()[0])
         self.slack.posts.clear(); state.seen.add(self.key); self.result = BudgetExceeded(5.1); self.set_policy({"max_job_usd": {"review": 4}}); self.go(); self.assertIn("<@U1> Stopped the review", self.slack.texts()[0])
@@ -418,16 +418,16 @@ class RunReview(Base):
     def test_a_skill_that_stopped_on_purpose_is_explained_not_reported_as_a_missing_review(self):
         self.posted.return_value = None; self.result = {"result": "I stopped before reviewing: this exact commit was already reviewed.\nDEX_VERDICT: skip", "total_cost_usd": 0.14, "permission_denials": []}
         state.jobs[self.key]["tokens"] = {"fresh": 1, "cache_read": 1, "output": 1}; self.raw_text = self.event("Bash"); self.go(); t = self.slack.texts()[-1]
-        self.assertIn("<@U1> :information_source: No new review was posted on <https://github.com/degreed/fe-workspace/pull/4626>. The skill stopped on purpose:", t); self.assertIn(">I stopped before reviewing", t)
+        self.assertIn("<@U1> :information_source: No new review was posted on <https://github.com/acme/web/pull/4626>. The skill stopped on purpose:", t); self.assertIn(">I stopped before reviewing", t)
         self.assertNotIn("could not find a posted review", t); self.assertEqual(state.jobs[self.key]["outcome"], "not reviewed (nothing posted)"); self.assertEqual(self.slack.reacts[-1]["name"], "information_source")
         self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [], "no 'ran NO agents' DM for a deliberate stop")
     def test_a_missing_review_message_keeps_the_link_clean(self):
-        self.posted.return_value = None; self.go(); self.assertIn("on <https://github.com/degreed/fe-workspace/pull/4626>. Please check the PR.", self.slack.texts()[-1])
+        self.posted.return_value = None; self.go(); self.assertIn("on <https://github.com/acme/web/pull/4626>. Please check the PR.", self.slack.texts()[-1])
     def test_a_review_that_ran_no_agents_is_flagged_and_its_log_kept(self):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Bash"), self.event("Read"), json.dumps({"type": "result"})]); self.go()
         self.assertTrue(any("The skill ran no review agents" in t for t in self.slack.texts()), "the thread reply warns"); dm = [p for p in self.slack.posts if p["channel"] == OWNER]; self.assertEqual(len(dm), 1); self.assertIn("NO review agents", dm[0]["text"])
         last = json.loads((self.tmp / "audit.jsonl").read_text().splitlines()[-1]); self.assertEqual(last["agents"], 0)
-        self.assertTrue((config.DRAFTS / f"degreed_fe-workspace-4626-{'a' * 7}.jsonl").exists(), "the log is kept so the shortcut can be inspected")
+        self.assertTrue((config.DRAFTS / f"acme_web-4626-{'a' * 7}.jsonl").exists(), "the log is kept so the shortcut can be inspected")
     def test_a_review_with_agents_is_not_flagged(self):
         self.posted.return_value = ("APPROVED", "L"); self.raw_text = "\n".join([self.event("Agent"), self.event("Agent"), self.event("Agent", parent="x")]); self.go()
         self.assertFalse(any("no review agents" in t.lower() for t in self.slack.texts())); self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [])
@@ -507,7 +507,7 @@ class RunReview(Base):
         self.result = {**self.result, "permission_denials": [{"tool_name": "Bash", "tool_input": {"command": "ls /x/y"}}, {"tool_name": "Bash", "tool_input": {"command": "sed -n 1,5p f"}}]}
         self.posted.return_value = ("APPROVED", "L"); self.go(); self.assertEqual([p for p in self.slack.posts if p["channel"] == OWNER], [])
     def test_the_run_may_read_its_own_temp_dir(self):
-        self.go(); a = self.captured["args"]; self.assertEqual(a[a.index("--add-dir") + 1], str(config.TMPS / f"degreed_fe-workspace-4626-{'a' * 7}"))
+        self.go(); a = self.captured["args"]; self.assertEqual(a[a.index("--add-dir") + 1], str(config.TMPS / f"acme_web-4626-{'a' * 7}"))
     def test_a_review_that_hits_the_usage_limit_says_so_tags_the_requester_dms_the_owner_and_allows_a_retry(self):
         from dex.claude_runner import UsageLimit
         import datetime as dt

@@ -6,11 +6,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dex import router
 
-U4626 = "https://github.com/degreed/fe-workspace/pull/4626"
-U4460 = "https://github.com/degreed/fe-workspace/pull/4460"
+U4626 = "https://github.com/acme/web/pull/4626"
+U4460 = "https://github.com/acme/web/pull/4460"
 LAST = "helpers.ts:92 was last changed by Alice in commit abc1234 (Fix route snapshot null), PR #4201."
-ASKBIG = "https://github.com/degreed/fe-workspace/pull/4509 is big (137 files). Can it be split? If it can't be split, just tell me and I'll review it fully."
-ASK = "Which repo do you mean, the frontend (fe-workspace) or the backend (degreed-coach-builder)?"
+ASKBIG = "https://github.com/acme/web/pull/4509 is big (137 files). Can it be split? If it can't be split, just tell me and I'll review it fully."
+ASK = "Which repo do you mean, the frontend (fe-workspace) or the backend (acme-api)?"
 
 def ctx(bot=False, owner=False, urls=(), review=None, convo=False, parent=None, last_bot=None, jobs=(), pending=False):
     return {"mentions_bot": bot, "mentions_owner": owner, "pr_urls_in_message": list(urls), "known_review_jobs": list(jobs),
@@ -26,8 +26,8 @@ CASES = [
     ("review: bare PR link to the bot", f"<@BOT> {U4626}", ctx(bot=True, urls=[U4626]), {"review"}, True, None),
     ("review: 'yes review' in a thread whose parent is a PR link", "yes review", ctx(convo=True, parent=U4626, last_bot="You sent PR #4626 without a question, so here is where it stands. Tell me if you wanted something else."), {"review"}, True, None),
     ("review: 'review it' in a thread whose parent is a PR link", "review it", ctx(parent=U4626), {"review"}, True, None),
-    ("review: several bare PR links to the bot", "<@BOT> " + " ".join(f"https://github.com/degreed/fe-workspace/pull/{n}" for n in (4710, 4711, 4712)) + " https://github.com/degreed/degreed-assistant/pull/473",
-     ctx(bot=True, urls=[f"https://github.com/degreed/fe-workspace/pull/{n}" for n in (4710, 4711, 4712)] + ["https://github.com/degreed/degreed-assistant/pull/473"]), {"review"}, True, None),
+    ("review: several bare PR links to the bot", "<@BOT> " + " ".join(f"https://github.com/acme/web/pull/{n}" for n in (4710, 4711, 4712)) + " https://github.com/acme/assistant/pull/473",
+     ctx(bot=True, urls=[f"https://github.com/acme/web/pull/{n}" for n in (4710, 4711, 4712)] + ["https://github.com/acme/assistant/pull/473"]), {"review"}, True, None),
     ("proceed: it cannot be split, go ahead", "no it cannot be split, it is tested together. go ahead and review it", ctx(pending=True, last_bot=ASKBIG), {"proceed"}, True, None),
     ("proceed: just 'review as is'", "review it as is", ctx(pending=True, last_bot=ASKBIG), {"proceed"}, True, None),
     ("proceed: the one word 'fully' (what happened on #4482)", "fully", ctx(pending=True, last_bot=ASKBIG), {"proceed"}, True, None),
@@ -41,8 +41,8 @@ CASES = [
     ("decline: not now", "dont review this now", ctx(pending=True, last_bot=ASKBIG), {"decline"}, True, None),
     ("agent: a different question while a big-PR question is pending", "who wrote the Maestro results page?", ctx(pending=True, last_bot=ASKBIG), {"agent"}, True, None),
     ("no pending question: 'go ahead' is not proceed", "<@BOT> go ahead", ctx(bot=True), {"agent"}, True, None),
-    ("review: 're-run' after 'already reviewed', no mention", "re-run", ctx(parent=U4626, last_bot="Already reviewed <https://github.com/degreed/fe-workspace/pull/4626> at `abc1234`. The review is here: Approved. If you still want a fresh run, say so here (or push a new commit)."), {"review"}, True, lambda v: v["force"]),
-    ("review: 'yes run it again' after 'already reviewed'", "yes please run it again", ctx(parent=U4626, last_bot="Already reviewed <https://github.com/degreed/fe-workspace/pull/4626> at `abc1234`. If you still want a fresh run, say so here (or push a new commit)."), {"review"}, True, lambda v: v["force"]),
+    ("review: 're-run' after 'already reviewed', no mention", "re-run", ctx(parent=U4626, last_bot="Already reviewed <https://github.com/acme/web/pull/4626> at `abc1234`. The review is here: Approved. If you still want a fresh run, say so here (or push a new commit)."), {"review"}, True, lambda v: v["force"]),
+    ("review: 'yes run it again' after 'already reviewed'", "yes please run it again", ctx(parent=U4626, last_bot="Already reviewed <https://github.com/acme/web/pull/4626> at `abc1234`. If you still want a fresh run, say so here (or push a new commit)."), {"review"}, True, lambda v: v["force"]),
     ("status: plain", "<@BOT> status", ctx(bot=True), {"status"}, True, None),
     ("status: in thread, no mention", "any update?", ctx(review="running"), {"status"}, True, None),
     ("status: phrased without keywords", "how's the review looking so far?", ctx(review="running"), {"status"}, True, None),
@@ -51,7 +51,7 @@ CASES = [
     ("status: what are you doing", "<@BOT> what are you doing?", ctx(bot=True, review="running"), {"status"}, True, None),
     ("status: is it done", "is the review done yet?", ctx(review="running"), {"status"}, True, None),
     ("agent: why was it flagged", "why did you flag the first one?", ctx(review="done", convo=True), {"agent"}, True, None),
-    ("agent: who changed", "<@BOT> who last changed apps/lxp/src/app/degreed-coach/shared/helpers.ts and why?", ctx(bot=True), {"agent"}, True, None),
+    ("agent: who changed", "<@BOT> who last changed apps/lxp/src/app/acme-coach/shared/helpers.ts and why?", ctx(bot=True), {"agent"}, True, None),
     ("agent: follow-up reason, no mention", "any reason behind that change?", ctx(convo=True, last_bot=LAST), {"agent"}, True, None),
     ("agent: follow-up who approved", "and who approved it?", ctx(convo=True, last_bot=LAST), {"agent"}, True, None),
     ("agent: fix estimate", "what would it take to fix this?", ctx(review="done"), {"agent"}, True, None),

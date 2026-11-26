@@ -19,9 +19,9 @@ for root in skill_roots():  # both Claude folders: a run on the personal account
         for script in sorted((root / skill / "scripts").glob("*.sh")):
             cases.append((f"script {root.parent.name}/{skill}/{script.name}", f"{script} --help", OK))
 cases += [
-    ("gh pr view", "gh pr view 1 --repo degreed/fe-workspace --json state", OK),
-    ("gh pr diff", "gh pr diff 1 --repo degreed/fe-workspace", OK),
-    ("gh api reviews (exact form)", "gh api repos/degreed/fe-workspace/pulls/1/reviews", OK),
+    ("gh pr view", "gh pr view 1 --repo acme/web --json state", OK),
+    ("gh pr diff", "gh pr diff 1 --repo acme/web", OK),
+    ("gh api reviews (exact form)", "gh api repos/acme/web/pulls/1/reviews", OK),
     ("git show", "git show HEAD:README.md", OK),
     ("git -C <dir> grep (read-only)", "git -C sub grep -n foo origin/main -- README.md", OK),
     ("git -C <dir> log (read-only)", "git -C sub log --oneline -3", OK),
@@ -39,8 +39,8 @@ cases += [
     ("post with --body-file", f"gh pr review 1 --repo zz-none-org/none --comment --body-file {work}/tmp/review-body.md", OK),
     ("inline multi-line body with # line is denied", 'gh pr review 1 --repo zz-none-org/none --comment --body "## Title\n\n### Sub\n\ntext"', NO),
     ("gh pr merge is blocked even when posting is on", "gh pr merge 1 --repo zz-none-org/none", NO),
-    ("gh api POST is blocked", "gh api repos/degreed/fe-workspace/pulls/1/reviews -X POST", NO),
-    ("gh pr merge is blocked", "gh pr merge 1 --repo degreed/fe-workspace", NO),
+    ("gh api POST is blocked", "gh api repos/acme/web/pulls/1/reviews -X POST", NO),
+    ("gh pr merge is blocked", "gh pr merge 1 --repo acme/web", NO),
     ("git push is blocked", "git push origin main", NO),
     ("../ out of scripts dir is blocked", f"{_SKILLS}/review-prs/scripts/../../../../bin/ls", NO),
     ("rm is blocked", "rm -rf sub", NO),

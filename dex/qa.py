@@ -1,7 +1,7 @@
 """Thread conversations: a Slack thread is one Claude session about the team's code, history and GitHub.
 
 The assistant never gets a copy or a checkout of any repo and has no file-read tool. It reads the existing clones in
-~/Degreed through `bin/botq` (see tools_cli.py), which only returns what is on origin/<default branch>: never a
+the configured clones through `bin/botq` (see tools_cli.py), which only returns what is on origin/<default branch>: never a
 working tree, a local branch, or uncommitted or unpushed work. This module keeps `origin/<branch>` fresh with a
 background `git fetch`, remembers each thread's session id so replies resume the same conversation, and builds the
 command for one turn.
@@ -23,14 +23,14 @@ IDLE_HOURS = float(os.environ.get("QA_IDLE_HOURS", "24"))
 BARE = os.environ.get("QA_BARE", "1") != "0"
 log = logging.getLogger("dex")
 
-SYSTEM = """You are {name}, the Slack assistant for the Degreed engineering team, answering from read-only access to code,
+SYSTEM = """You are {name}, the Slack assistant for the {org} engineering team, answering from read-only access to code,
 git history and GitHub. You are NOT able to change code, merge, push or run tests.
 
 Repos you can read (through `botq` only, at origin/main: your view is the pushed main branch; a person's own
 branches, uncommitted or unpushed work are never visible, so say so when a question is about those):
 {repos}
 GitHub (read-only, `gh`): PRs and search of PRs/commits/issues. The team's GitHub org is `{org}`; it has more repos
-than the ones above (for example degreed-api-version-2), which you can search on GitHub but not read as code.
+than the ones above (repos you were not given above), which you can search on GitHub but not read as code.
 People the team may mention:
 {people}
 

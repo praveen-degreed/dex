@@ -16,6 +16,7 @@
     dexctl claude show                     which Claude account each kind of run uses (foundry | subscription | your own profile)
     dexctl claude check <profile>          is that profile usable: runs `claude auth status` with its environment
     dexctl claude use <review|question|router|all> <profile>   switch (back to foundry with `foundry`); takes effect on the next run
+    dexctl skills [check|install|update]   the review skills the configured repos need: what is installed, install the missing, reinstall
     dexctl serve [--port 8787]             the Dex page on http://127.0.0.1:<port> (status, stop, run, restart, settings)
 
 It reads the files Dex writes (runtime.json, usage.json, audit.jsonl, policy.json) and edits only policy.json, which
@@ -288,6 +289,11 @@ def cmd_claude(a):
     return 0
 
 
+def cmd_skills(a):
+    from . import skills
+    return skills.main([a.action])
+
+
 def cmd_serve(a):
     from . import dashboard
     dashboard.serve(a.port)
@@ -312,6 +318,7 @@ def build_parser():
     cl = sub.add_parser("claude"); cls = cl.add_subparsers(dest="what", required=True)
     cls.add_parser("show"); cls.add_parser("check").add_argument("profile")
     cu = cls.add_parser("use"); cu.add_argument("target"); cu.add_argument("profile")
+    sk = sub.add_parser("skills"); sk.add_argument("action", nargs="?", default="check", choices=["check", "install", "update"])
     s = sub.add_parser("serve"); s.add_argument("--port", type=int, default=8787)
     return ap
 
@@ -320,7 +327,7 @@ def main(argv=None):
     a = build_parser().parse_args(argv)
     if a.cmd in ("foundry", "subscription"):  # shortcuts for `claude use ...`
         a.what, a.target, a.profile, a.cmd = "use", ("all" if a.cmd == "foundry" else "review"), a.cmd, "claude"
-    handlers = {"status": cmd_status, "usage": cmd_usage, "top": cmd_top, "show": cmd_show, "serve": cmd_serve, "claude": cmd_claude}
+    handlers = {"status": cmd_status, "usage": cmd_usage, "top": cmd_top, "show": cmd_show, "serve": cmd_serve, "claude": cmd_claude, "skills": cmd_skills}
     try:
         return handlers[a.cmd](a) if a.cmd in handlers else cmd_change(a)
     except ValueError as e:

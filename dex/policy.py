@@ -228,12 +228,6 @@ class Policy:
             self.usage["router_calls"] += 1
             return True
 
-    def remaining(self, user, capability):
-        with self.lock:
-            self._roll()
-            lim = self.limit(self.role_of(user), capability)
-            return None if lim is None else max(0, lim - self._user(user)["counts"].get(capability, 0))
-
     def snapshot(self):
         """A plain-data copy of today's usage and the switches, for the dashboard."""
         with self.lock:
