@@ -49,7 +49,36 @@ tests/                 test_policy, test_core, test_flow, test_tools_cli, test_b
 Dex carries no identity of its own: the Slack app, your Slack id, your GitHub login, your repos and your Claude account are all local
 configuration (every such file is ignored by git), so a fork never inherits anyone else's.
 1. `make setup`: creates the venv, installs the dependencies, copies `env.example` to `.env` and `people.example.json` to `people.json` (only when missing), and installs the review skills your repos need (see "Review skills").
-2. Create the Slack app: Socket Mode on. Bot scopes `app_mentions:read`, `chat:write`, `channels:history`, `groups:history`, `reactions:write`; events `message.channels`, `message.groups`, `app_mention`. Invite the bot to the channels. Its display name is set in the Slack app (`BOT_NAME` only changes how the assistant names itself).
+2. Create the Slack app from the manifest in this repo, [`slack-app-manifest.yml`](slack-app-manifest.yml): <https://api.slack.com/apps> -> Create New App -> From a manifest -> pick your workspace -> paste the file -> Create. The manifest cannot create the tokens, so then: Basic Information -> App-Level Tokens -> Generate Token with scope `connections:write` (this is `SLACK_APP_TOKEN`, `xapp-...`), and Install App -> Install to Workspace (the Bot User OAuth Token is `SLACK_BOT_TOKEN`, `xoxb-...`). Invite the bot to the channels. Its display name is set in the Slack app (`BOT_NAME` only changes how the assistant names itself).
+   ```yaml
+   display_information:
+     name: Dex
+     description: Reviews pull requests and answers questions about your code from Slack.
+   features:
+     bot_user:
+       display_name: Dex
+       always_online: true
+   oauth_config:
+     scopes:
+       bot:
+         - "app_mentions:read"
+         - "channels:history"
+         - "groups:history"
+         - "chat:write"
+         - "reactions:write"
+   settings:
+     event_subscriptions:
+       bot_events:
+         - app_mention
+         - message.channels
+         - message.groups
+     interactivity:
+       is_enabled: false
+     socket_mode_enabled: true      # no public URL needed
+     org_deploy_enabled: false
+     token_rotation_enabled: false
+   ```
+   (The file has the same content with comments.)
 3. Fill in `.env`: `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, **your** `OWNER_USER_ID` (you get the drafts and the alerts), your `GITHUB_ORG` (empty turns the org-wide PR search off), and **only the repos you work on** in `REPOS` (empty is fine: Dex then only answers questions).
    More repos can go in `repos_extra.json` (see `repos_extra.example.json`), read-only ones in `readonly_repos.json`.
    Optional: `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).

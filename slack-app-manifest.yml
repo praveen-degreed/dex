@@ -1,0 +1,33 @@
+# Slack app manifest for Dex. Create the app from it instead of clicking through the settings:
+#   https://api.slack.com/apps -> Create New App -> From a manifest -> pick your workspace -> paste this file -> Create.
+# Then (the manifest cannot do these two):
+#   1. Basic Information -> App-Level Tokens -> Generate Token with the scope `connections:write`  -> SLACK_APP_TOKEN (xapp-...)
+#   2. Install App -> Install to Workspace -> "Bot User OAuth Token"                              -> SLACK_BOT_TOKEN (xoxb-...)
+# Change `name` and `display_name` to what you want people to see; invite the bot to the channels it should work in.
+display_information:
+  name: Dex
+  description: Reviews pull requests and answers questions about your code from Slack.
+  background_color: "#2c2d30"
+features:
+  bot_user:
+    display_name: Dex
+    always_online: true
+oauth_config:
+  scopes:
+    bot:
+      - app_mentions:read   # @Dex mentions
+      - channels:history    # read the thread a message is in (public channels)
+      - groups:history      # same for private channels
+      - chat:write          # reply in the thread
+      - reactions:write     # status reactions on the message
+settings:
+  event_subscriptions:
+    bot_events:
+      - app_mention
+      - message.channels
+      - message.groups
+  interactivity:
+    is_enabled: false
+  org_deploy_enabled: false
+  socket_mode_enabled: true
+  token_rotation_enabled: false
