@@ -2,7 +2,7 @@
 
 A Slack agent (Socket Mode, runs locally). People mention the bot, or tag the owner, and it:
 
-- **reviews a PR** (`fe-workspace` via `/review-prs`; `degreed-coach-builder` and `degreed-assistant` via `/review-prs-be`); the skill posts its own decision to GitHub. A message with several PR links reviews each distinct one, one at a time (up to `MAX_LINKS_PER_MESSAGE`, default 5); a bare link, or "review" in a thread whose parent is a PR link, is enough;
+- **reviews a PR** (`fe-workspace` via `/review-prs`; `degreed-coach-builder` and `degreed-assistant` via `/review-prs-be`); the skill posts its own decision to GitHub. A message with several PR links reviews each distinct one, one at a time (all are queued, no per-message cap); a bare link, or "review" in a thread whose parent is a PR link, is enough;
 - **answers anything else it can find out** ("who changed this and why?", "what is Shubham working on?", "my open PRs") as an assistant with read-only access to both repos' `main`, git history and GitHub. A Slack thread is one Claude session, so follow-ups keep their context, and the assistant **asks a clarifying question** when it needs one;
 - reports **status**, **stops** a running job, and shows **usage**.
 
@@ -49,7 +49,7 @@ legacy/                the previous single-file bot, kept for reference
 2. `cp env.example .env` and fill in `SLACK_BOT_TOKEN`, `SLACK_APP_TOKEN`, `OWNER_USER_ID`, `REPOS`; copy `people.example.json` to `people.json` and `readonly_repos.example.json` to `readonly_repos.json` (both optional)
    (`{"degreed/fe-workspace":{"clone":"/path","skill":"/review-prs"},"degreed/degreed-coach-builder":{"clone":"/path","skill":"/review-prs-be"}}`).
    More reviewable repos (for example `degreed/degreed-assistant` with `/review-prs-be`) can go in `repos_extra.json` instead of `.env` (see `repos_extra.example.json`).
-   Optional: `MAX_LINKS_PER_MESSAGE` (5), `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).
+   Optional: `JOB_TIMEOUT_MIN` (45), `QA_TIMEOUT_MIN` (10), `MAX_QA_TURNS_PER_THREAD` (15), `CONCURRENCY` (1), `QA_CONCURRENCY` (2), `QA_BARE` (1), `QA_IDLE_HOURS` (24), `ALLOWED_USERS` (empty = anyone).
 3. `python3 -m venv .venv && .venv/bin/pip install -r requirements.txt`; `gh auth status` and `claude` must work.
 4. Run: `tmux new -s dex` then `caffeinate -i .venv/bin/python -u bot.py`. Code changes load only on a restart (tmux does not reload code or restart a crashed bot). **Do not restart while a review runs: it kills it** (check `pgrep -fl 'claude.* -p'` first). A killed review leaves nothing posted; send the link again with `force`.
 5. The review skills are installed from GitHub `main` (`install.sh all` from `praveen-degreed/review-skills`, which holds both the FE and the BE skill), not from local files: a skill change takes effect only after it is merged and reinstalled. Each review reads the installed skill fresh, so no Dex restart is needed for that.

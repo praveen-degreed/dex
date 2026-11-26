@@ -125,14 +125,14 @@ class Routing(Base):
     def test_review_link_from_thread_parent(self):
         self.info = {"parent_text": f"please see {U4626}", "last_bot": None}; self.verdict = V("review")
         handlers.handle(ev(text="<@BOT> review this", thread_ts="T", ts="4.4")); self.assertEqual(self.start_review.call_args[0][4].group(0), U4626)
-    def test_several_links_each_start_a_review_once_in_order_with_a_cap(self):
+    def test_several_links_each_start_a_review_once_in_order_with_no_cap(self):
         base = "https://github.com/degreed/fe-workspace/pull/"
         self.verdict = V("review"); handlers.handle(ev(text=f"<@BOT> review {base}1 {base}2 {base}1 {base}3", ts="7.7"))
         self.assertEqual([c[0][4].group(0) for c in self.start_review.call_args_list], [base + "1", base + "2", base + "3"])
         self.assertIn("3 PRs", self.slack.texts()[0])
         self.start_review.reset_mock(); self.slack.sent.clear() if hasattr(self.slack, "sent") else None
         many = " ".join(f"{base}{n}" for n in range(10, 18)); self.verdict = V("review"); handlers.handle(ev(text=f"<@BOT> review {many}", ts="8.8"))
-        self.assertEqual(self.start_review.call_count, handlers.MAX_LINKS); self.assertTrue(any("take up to" in t for t in self.slack.texts()))
+        self.assertEqual(self.start_review.call_count, 8); self.assertFalse(any("take up to" in t for t in self.slack.texts()))
     def test_agent_dispatch_includes_thread_context(self):
         self.info = {"parent_text": "ctx", "last_bot": None}; self.verdict = V("agent"); handlers.handle(ev(text="<@BOT> who changed helpers.ts?", thread_ts="T", ts="1.2"))
         a = self.start_question.call_args[0]; self.assertEqual(a[:4], ("C1", "T", "1.2", "U1")); self.assertEqual(a[5]["intent"], "agent"); self.assertEqual(a[8], "ctx")

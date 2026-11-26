@@ -16,7 +16,6 @@ FORCE = re.compile(r"\bforce\b", re.I)
 
 CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage", "control": "usage", "proceed": "status", "decline": "status"}
 PENDING_TTL_S = 24 * 3600  # a big-PR question nobody answered is dropped after a day
-MAX_LINKS = int(__import__("os").environ.get("MAX_LINKS_PER_MESSAGE", "5"))  # PRs reviewed per message
 LOW_CONFIDENCE = 0.5  # below this the router is guessing: hand the message to the assistant, which can ask
 
 
@@ -188,12 +187,8 @@ def handle(event):
                 state.awaiting_link.add((channel, thread_ts))  # the next message in this thread may just be the link
             return su.reply(channel, thread_ts, "Which PR should I review? Send me the link.")
         force = verdict["force"] or bool(FORCE.search(text))
-        if len(matches) > MAX_LINKS:
-            su.reply(channel, thread_ts, f"You sent {len(matches)} PRs; I take up to {MAX_LINKS} per message. "
-                     f"Reviewing the first {MAX_LINKS}; send the rest in another message.")
-            matches = matches[:MAX_LINKS]
-        elif len(matches) > 1:
-            su.reply(channel, thread_ts, f"{len(matches)} PRs: reviewing them one at a time, in the order you sent them.")
+        if len(matches) > 1:
+            su.reply(channel, thread_ts, f"{len(matches)} PRs: queuing all of them, reviewed in the order you sent them.")
         with state.lock:
             state.awaiting_link.discard((channel, thread_ts))
         for m in matches:
