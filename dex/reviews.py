@@ -33,7 +33,7 @@ def choose_skill(cfg, paths):
     return cfg["skill"]
 
 
-def prompt(skill, url, sha, post, tmp=None, confirmed_big=False):
+def prompt(skill, url, sha, post, tmp=None, confirmed_big=False, rerun=False):
     lessons = config.LESSONS.read_text() if config.LESSONS.exists() else ""
     if post:
         mode = ("Post your review to the PR yourself, exactly as the skill normally does. The requester tagged the "
@@ -50,6 +50,7 @@ def prompt(skill, url, sha, post, tmp=None, confirmed_big=False):
     return (
         f"{head}\n\n"
         f"The PR head is pinned at {sha}; review exactly that commit. {mode} "
+        + ("The requester explicitly asked to re-run this review on a commit that was already reviewed: do NOT stop because it is a duplicate; run the full review again. " if rerun else "")
         + ("The requester confirmed this PR cannot be split: review it fully, even above the skill's own size or unit limit, and do not stop to ask the author to split it. " if confirmed_big else "")
         + 
         "Note: checks.txt from fetch-pr.sh lists only FAILING checks; an empty file means no check is failing, "
@@ -224,8 +225,16 @@ def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False
             state.threads[(channel, thread_ts)] = key  # status replies in this thread follow the running review
             return su.reply(channel, thread_ts, f"A review of {url} at `{sha[:7]}` is already running. "
                                                 "Ask for its status any time.")
+    was_reviewed = key in state.seen  # read before the claim: a forced run on a reviewed commit is a re-run
     if not state.claim(key, force):
-        return su.reply(channel, thread_ts, f"Already reviewed {url} at `{sha[:7]}`. Tell me to re-run it if you want a new review.")
+        found = github.review_at(repo, number, sha)
+        with state.lock:
+            state.awaiting_link.add((channel, thread_ts))  # my invitation to re-run: the next message here may be the answer, no mention needed
+        existing = f" The review is here: <{found[1]}|{github.REVIEW_LABEL.get(found[0], found[0].lower()).capitalize()}>." if found else ""
+        return su.reply(channel, thread_ts, f"Already reviewed <{url}> at `{sha[:7]}`.{existing} The code has not changed since, so I would find the same things. "
+                                            "If you still want a fresh run, say so here (or push a new commit).")
+    if force and was_reviewed:
+        cfg = {**cfg, "rerun": True}  # the requester asked for it: the skill must not skip it as a duplicate
     ok, why = services.policy.acquire(user, "review")
     if not ok:
         state.release(key)
@@ -281,7 +290,7 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
         subprocess.run(["git", "-C", clone, "worktree", "add", "--detach", str(wt), sha], check=True, capture_output=True)
         env = claude_env.env_for(services.policy, "review", {"TMPDIR": f"{tmp}/"})  # trailing slash: fetch-pr.sh concatenates names onto it
         result = run_claude(
-            ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp, bool(cfg.get("confirmed_big"))),
+            ["claude", "-p", prompt(cfg["skill"], url, sha, post, tmp, bool(cfg.get("confirmed_big")), bool(cfg.get("rerun"))),
              "--output-format", "stream-json", "--verbose",
              "--permission-mode", "dontAsk", "--allowedTools", allowed, "--disallowedTools", denied]
             + (["--max-budget-usd", f"{max_usd:g}"] if max_usd else [])
@@ -354,9 +363,15 @@ def review(url, repo, number, sha, key, cfg, channel, thread_ts, msg_ts, user, i
                 su.reply(channel, thread_ts, done_message(user, url, outcome, link, notes, usage,
                                                           AGAIN_HINT if outcome in ("changes requested", "comments posted") and skill_verdict != "skip" else ""))
                 done = "white_check_mark"
+            elif skill_verdict == "skip":
+                outcome = "not reviewed (nothing posted)"
+                why = VERDICT_LINE.sub("", result.get("result") or "").strip()
+                su.reply(channel, thread_ts, f"<@{user}> :information_source: No new review was posted on <{url}>. The skill stopped on purpose:\n>"
+                         + why[:1400].replace("\n", "\n>") + usage)
+                done = "information_source"
             else:
                 outcome = "finished, but no posted review was found"
-                su.reply(channel, thread_ts, f"<@{user}> Review finished but I could not find a posted review on {url}; check the PR." + usage)
+                su.reply(channel, thread_ts, f"<@{user}> Review finished but I could not find a posted review on <{url}>. Please check the PR." + usage)
                 done = "warning"
         else:
             body = draft.read_text().strip()

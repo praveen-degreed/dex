@@ -41,6 +41,8 @@ CASES = [
     ("decline: not now", "dont review this now", ctx(pending=True, last_bot=ASKBIG), {"decline"}, True, None),
     ("agent: a different question while a big-PR question is pending", "who wrote the Maestro results page?", ctx(pending=True, last_bot=ASKBIG), {"agent"}, True, None),
     ("no pending question: 'go ahead' is not proceed", "<@BOT> go ahead", ctx(bot=True), {"agent"}, True, None),
+    ("review: 're-run' after 'already reviewed', no mention", "re-run", ctx(parent=U4626, last_bot="Already reviewed <https://github.com/degreed/fe-workspace/pull/4626> at `abc1234`. The review is here: Approved. If you still want a fresh run, say so here (or push a new commit)."), {"review"}, True, lambda v: v["force"]),
+    ("review: 'yes run it again' after 'already reviewed'", "yes please run it again", ctx(parent=U4626, last_bot="Already reviewed <https://github.com/degreed/fe-workspace/pull/4626> at `abc1234`. If you still want a fresh run, say so here (or push a new commit)."), {"review"}, True, lambda v: v["force"]),
     ("status: plain", "<@BOT> status", ctx(bot=True), {"status"}, True, None),
     ("status: in thread, no mention", "any update?", ctx(review="running"), {"status"}, True, None),
     ("status: phrased without keywords", "how's the review looking so far?", ctx(review="running"), {"status"}, True, None),

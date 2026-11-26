@@ -41,6 +41,17 @@ def pr_paths(url):
     return [p for p in r.stdout.splitlines() if p]
 
 
+def review_at(repo, number, sha):
+    """(state, url) of the newest review by the gh user on this exact commit, else None."""
+    try:
+        me = subprocess.run(["gh", "api", "user", "-q", ".login"], capture_output=True, text=True).stdout.strip()
+        reviews = gh_json(["api", f"repos/{repo}/pulls/{number}/reviews?per_page=100"])
+    except Exception:
+        return None
+    mine = [r for r in reviews if (r.get("user") or {}).get("login") == me and (r.get("commit_id") or "").startswith(sha[:7]) and r.get("state") != "PENDING"]
+    return (mine[-1].get("state", ""), mine[-1].get("html_url", "")) if mine else None
+
+
 def posted_review(repo, number, since):
     """(state, url) of the newest review by the gh user on the PR submitted since `since`, else None."""
     try:
