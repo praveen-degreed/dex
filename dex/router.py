@@ -29,7 +29,7 @@ Pick a fixed action ONLY when the message clearly asks for exactly that. Anythin
   review or approve it). A message that is only a PR link sent to the bot, with no question, also means review. The
   link can be in the message or be the thread's parent PR (thread.parent_pr_url): in that thread a short request such
   as "review", "yes review", "go ahead and review it" or "yes" after the bot offered a review is review, even though
-  the message itself has no link. If they ask to run it again on the same commit, set force=true.
+  the message itself has no link. If they ask to run it again on the same commit, set force=true. A request for a post-merge review (PMR) of a merged PR is review with force=true.
 - status: the user asks how a review or answer THE BOT is currently running is going, or whether it finished
   ("is the review done?", "what are you doing?", "any update?"). A question about what a PERSON is doing is not
   status; it is agent. context.known_review_jobs lists reviews the bot has for PR links in the message: asking how
