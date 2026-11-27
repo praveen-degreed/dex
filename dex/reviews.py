@@ -178,8 +178,15 @@ def start_review(channel, thread_ts, msg_ts, user, match, force, confirmed=False
     except RuntimeError as err:
         return su.dm(config.OWNER, f"Could not read {url}: {err}")
     sha = info["sha"]
-    if info["state"] != "OPEN":
-        return su.reply(channel, thread_ts, f"{url} is {info['state'].lower()}; skipping.")
+    if info["state"] == "MERGED" and force:
+        pass  # a post-merge review (PMR) was asked for explicitly: review the merged code
+    elif info["state"] != "OPEN":
+        hint = ""
+        if info["state"] == "MERGED":
+            hint = " Say `force` or ask for a post-merge review (PMR) to review it anyway."
+            with state.lock:
+                state.awaiting_link.add((channel, thread_ts))  # my invitation: the answer in this thread needs no @mention
+        return su.reply(channel, thread_ts, f"{url} is {info['state'].lower()}; skipping.{hint}")
 
     cap = services.policy.max_pr_files()
     if cap and info.get("files", 0) > cap and not (force and user == config.OWNER):

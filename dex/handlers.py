@@ -12,7 +12,7 @@ log = logging.getLogger("dex")
 
 # Only used when the LLM router fails, so the bot keeps working with simple rules.
 STATUS_WORDS = re.compile(r"\b(status|progress|updates?|eta|how long|done yet|finished yet|what'?s (happening|going on))\b", re.I)
-FORCE = re.compile(r"\bforce\b", re.I)
+FORCE = re.compile(r"\b(force|pmr|post[- ]merge)\b", re.I)  # "pmr" = post-merge review: also lets a merged PR through
 
 CAPABILITY = {"review": "review", "agent": "question", "status": "status", "stop": "stop", "usage": "usage", "control": "usage", "proceed": "status", "decline": "status"}
 PENDING_TTL_S = 24 * 3600  # a big-PR question nobody answered is dropped after a day

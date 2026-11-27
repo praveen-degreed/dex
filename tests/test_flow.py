@@ -180,7 +180,9 @@ class StartReview(Base):
         self.go("https://github.com/other/repo/pull/1"); self.assertIn("don't review", self.slack.texts()[0]); self.assertEqual(self.slack.posts[1]["channel"], OWNER); self.pool.submit.assert_not_called()
     def test_unreadable_closed_running_duplicate(self):
         self.info.side_effect = RuntimeError("no access"); self.go(); self.assertEqual(self.slack.posts[0]["channel"], OWNER); self.slack.posts.clear(); self.info.side_effect = None
-        self.info.return_value = {"sha": "b" * 40, "state": "MERGED", "is_fork": False}; self.go(); self.assertIn("merged", self.slack.texts()[0])
+        self.info.return_value = {"sha": "b" * 40, "state": "MERGED", "is_fork": False}; self.go(); self.assertIn("merged", self.slack.texts()[0]); self.assertIn("PMR", self.slack.texts()[0]); self.assertIn(("C1", "T"), state.awaiting_link); self.pool.submit.assert_not_called()
+        self.info.return_value = {"sha": "b" * 40, "state": "CLOSED", "is_fork": False}; self.go(force=True); self.assertIn("closed", self.slack.texts()[-1]); self.pool.submit.assert_not_called()
+        self.slack.posts.clear(); self.info.return_value = {"sha": "b" * 40, "state": "MERGED", "is_fork": False}; self.go(force=True); self.pool.submit.assert_called_once(); self.pool.submit.reset_mock(); state.seen.discard(f"{FE}#4626@{'b' * 40}"); state.inflight.discard(f"{FE}#4626@{'b' * 40}")
         self.info.return_value = {"sha": "a" * 40, "state": "OPEN", "is_fork": False}; state.inflight.add(f"{FE}#4626@{'a' * 40}"); self.go(); self.assertIn("already running", self.slack.texts()[-1]); self.assertEqual(state.threads[("C1", "T")], f"{FE}#4626@{'a' * 40}")
         state.inflight.clear(); state.seen.add(f"{FE}#4626@{'a' * 40}"); self.go(); self.assertIn("Already reviewed", self.slack.texts()[-1])
         self.go(force=True); self.pool.submit.assert_called_once()
